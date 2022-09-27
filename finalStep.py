@@ -176,6 +176,8 @@ vc.nc.commit_list(statements=[
     'MATCH (n:Class) WHERE NOT EXISTS(n.uniqueFacets) AND n.short_form starts with "FBrf" SET n.uniqueFacets=["FB_Reference"];',
     'MATCH (n:Class) WHERE NOT EXISTS(n.uniqueFacets) AND n.short_form starts with "FBim" SET n.uniqueFacets=["FB_Image"];',
     'MATCH (n:Class) WHERE NOT EXISTS(n.uniqueFacets) AND n.short_form starts with "FBdv" SET n.uniqueFacets=["Stage"];',
+    'MATCH (n:Class) WHERE n.short_form starts with "FBdv" SET n:Stage;',
+    'MATCH (n:Class) WHERE n.short_form starts with "FBgn" SET n:Gene;',
     'MATCH (n:Class) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets=["Class"];',
     'MATCH (n:Split) WHERE EXISTS(n.uniqueFacets) AND NOT n.short_form starts with "VFBc_" AND NOT "Split" IN n.uniqueFacets SET n.uniqueFacets=n.uniqueFacets + ["Split"];'
 ])
