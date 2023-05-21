@@ -179,7 +179,9 @@ vc.nc.commit_list(statements=[
     'MATCH (n:Class) WHERE n.short_form starts with "FBdv" SET n:Stage;',
     'MATCH (n:Class) WHERE n.short_form starts with "FBgn" SET n:Gene;',
     'MATCH (n:Class) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets=["Class"];',
-    'MATCH (n:Split) WHERE EXISTS(n.uniqueFacets) AND NOT n.short_form starts with "VFBc_" AND NOT "Split" IN n.uniqueFacets SET n.uniqueFacets=n.uniqueFacets + ["Split"];'
+    'MATCH (n:Split) WHERE EXISTS(n.uniqueFacets) AND NOT n.short_form starts with "VFBc_" AND NOT "Split" IN n.uniqueFacets SET n.uniqueFacets=n.uniqueFacets + ["Split"];',
+    'MATCH (n:DataSet) WHERE n.short_form STARTS WITH "FBlc" SET n:hasScRNAseq SET n:scRNAseq_DataSet',
+    'MATCH (n:DataSet)<-[:has_source]-(:Individual)-[:in_register_with]->(:Template) SET n:has_image'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
