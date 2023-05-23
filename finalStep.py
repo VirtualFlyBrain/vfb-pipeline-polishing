@@ -179,9 +179,17 @@ vc.nc.commit_list(statements=[
     'MATCH (n:Class) WHERE n.short_form starts with "FBdv" SET n:Stage;',
     'MATCH (n:Class) WHERE n.short_form starts with "FBgn" SET n:Gene;',
     'MATCH (n:Class) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets=["Class"];',
-    'MATCH (n:Split) WHERE EXISTS(n.uniqueFacets) AND NOT n.short_form starts with "VFBc_" AND NOT "Split" IN n.uniqueFacets SET n.uniqueFacets=n.uniqueFacets + ["Split"];',
+    'MATCH (n:Split) WHERE EXISTS(n.uniqueFacets) AND NOT n.short_form starts with "VFBc_" AND NOT "Split" IN n.uniqueFacets SET n.uniqueFacets=n.uniqueFacets + ["Split"];'
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start) 
+
+start = timeit.default_timer()
+print("Fixes for scRNAseq DataSets...")
+vc.nc.commit_list(statements=[
     'MATCH (n:DataSet) WHERE n.short_form STARTS WITH "FBlc" SET n:hasScRNAseq SET n:scRNAseq_DataSet',
-    'MATCH (n:DataSet)<-[:has_source]-(:Individual)-[:in_register_with]->(:Template) SET n:has_image'
+    'MATCH (n:DataSet)<-[:has_source]-(:Individual)-[:in_register_with]->(:Template) SET n:has_image',
+    'MATCH (a)-[r1:licence]->(l:License) MERGE (a)-[r2:has_license]->(l) ON CREATE SET r2=r1 SET r2.label="has_license" DELETE r1'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
