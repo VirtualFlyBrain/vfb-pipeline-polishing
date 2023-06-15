@@ -190,6 +190,7 @@ vc.nc.commit_list(statements=[
     'MATCH (n:DataSet) WHERE n.short_form STARTS WITH "FBlc" SET n:hasScRNAseq SET n:scRNAseq_DataSet',
     'MATCH (n:DataSet)<-[:has_source]-(:Individual)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template) SET n:has_image',
     'MATCH (a)-[r1:licence]->(l:License) MERGE (a)-[r2:has_license]->(l) ON CREATE SET r2=r1 SET r2.label="has_license" DELETE r1',
+    'MATCH (n:Cluster) WHERE EXISTS(n.uniqueFacets) SET n.uniqueFacets= n.uniqueFacets + "Cluster";',
     'MATCH (primary)<-[:composed_primarily_of]-(c:Cluster)-[:has_source]->(ds:scRNAseq_DataSet) WHERE not primary:hasScRNAseq SET primary:hasScRNAseq'
 ])
 stop = timeit.default_timer()
