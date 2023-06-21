@@ -190,7 +190,7 @@ vc.nc.commit_list(statements=[
     'MATCH (n:DataSet) WHERE n.short_form STARTS WITH "FBlc" SET n:hasScRNAseq SET n:scRNAseq_DataSet',
     'MATCH (n:DataSet)<-[:has_source]-(:Individual)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template) SET n:has_image',
     'MATCH (a)-[r1:licence]->(l:License) MERGE (a)-[r2:has_license]->(l) ON CREATE SET r2=r1 SET r2.label="has_license" DELETE r1',
-    'MATCH (n:Cluster) WHERE EXISTS(n.uniqueFacets) SET n.uniqueFacets= n.uniqueFacets + "Cluster";',
+    'MATCH (n:Cluster) WHERE EXISTS(n.uniqueFacets) AND NOT "Cluster" IN n.uniqueFacets SET n.uniqueFacets= n.uniqueFacets + "Cluster";',
     'MATCH (parent:Cell)<-[:SUBCLASSOF*]-(primary:Class)<-[:composed_primarily_of]-(c:Cluster)-[:has_source]->(ds:scRNAseq_DataSet) SET primary:hasScRNAseq SET parent:hasScRNAseq',
     'MATCH ()-[r:expresses]->() WHERE EXISTS(r.expression_level) WITH r, split(toString(r.expression_level[0]), ".") as parts WITH size(parts[0]) AS beforeDecimalLength, size(parts[1]) AS afterDecimalLength, r WITH max(beforeDecimalLength) AS maxBeforeDecimal, max(afterDecimalLength) AS maxAfterDecimal, collect(r) AS relationships UNWIND relationships AS r WITH maxBeforeDecimal, maxAfterDecimal, r, split(toString(r.expression_level[0]), ".") as parts WITH maxBeforeDecimal, maxAfterDecimal, r, parts, apoc.text.lpad(parts[0], maxBeforeDecimal, "0") AS beforeDecimalPadded, apoc.text.rpad(parts[1], maxAfterDecimal, "0") AS afterDecimalPadded SET r.expression_level = [beforeDecimalPadded + "." + afterDecimalPadded]'
 ])
