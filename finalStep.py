@@ -198,3 +198,10 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
+start = timeit.default_timer()
+print("Remove any unique facet duplicates...")
+vc.nc.commit_list(statements=[
+    'MATCH (n) WHERE EXISTS(n.uniqueFacets) SET n.uniqueFacets = apoc.coll.toSet(n.uniqueFacets);'
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start) 
