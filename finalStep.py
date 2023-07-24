@@ -4,6 +4,14 @@ from vfb_connect.cross_server_tools import VfbConnect
 vc = VfbConnect(neo_endpoint="http://pdb.ug.virtualflybrain.org", neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
 
 start = timeit.default_timer()
+print("Clean BLOCKED images removing anatomical ind and channel...")
+vc.nc.commit_list(statements=[
+	'MATCH (i:Individual)<-[:depicts]-(c:Individual)-[:INSTANCEOF]->(cc:Class {short_form:"VFBext_0000014"}) WHERE NOT (c)-[:in_register_with]->(:Template) DETACH DELETE c DETACH DELETE i'
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start) 
+
+start = timeit.default_timer()
 print("Add has_neuron/region_connectivity labels...")
 vc.nc.commit_list(statements=[
     'MATCH p=(a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE exists(r.weight) SET a:has_neuron_connectivity SET b:has_neuron_connectivity',
