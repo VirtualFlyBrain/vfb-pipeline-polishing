@@ -59,6 +59,15 @@ print('Run time: ', stop - start)
 
 start = timeit.default_timer()
 
+start = timeit.default_timer()
+print("Ensure all xrefs are on separate edges...")
+vc.nc.commit_list(statements=["MATCH (n)-[r:database_cross_reference]->(s:Site) WITH n, s, r, r.accession as accession WHERE size(accession) > 1 SET r.accession = [accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(accession) RETURN n, r, r1, s"
+			     "MATCH (n)-[r:database_cross_reference]->(s:Site) WITH n, s, r, r.accession as accession WHERE size(accession) > 1 SET r.accession = [accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(accession) RETURN n, r, r1, s"
+			     "MATCH (n)-[r:database_cross_reference]->(s:Site) WITH n, s, r, r.accession as accession WHERE size(accession) > 1 SET r.accession = [accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(accession) RETURN n, r, r1, s"])
+stop = timeit.default_timer()
+print('Run time: ', stop - start) 
+
+start = timeit.default_timer()
 
 print("Adding ALL SWC <-> SWC NBLAST scores...")
 
