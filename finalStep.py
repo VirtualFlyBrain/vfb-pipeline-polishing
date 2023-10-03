@@ -227,7 +227,7 @@ start = timeit.default_timer()
 print("Fix targeted schema issues...")
 vc.nc.commit_list(statements=[
     'MATCH ()-[r]->() WHERE EXISTS(r.pub) SET r.pub = r.pub + [];',
-    'MATCH ()-[r]->() WHERE EXISTS(r.typ) SET r.typ = (r.typ + [])[0];
+    'MATCH ()-[r]->() WHERE EXISTS(r.typ) SET r.typ = (r.typ + [])[0];'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
