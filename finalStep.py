@@ -228,7 +228,7 @@ print("Fix targeted schema issues...")
 vc.nc.commit_list(statements=[
     'MATCH ()-[r]->() WHERE EXISTS(r.pub) SET r.pub = r.pub + [];',
     'MATCH ()-[r]->() WHERE EXISTS(r.typ) SET r.typ = (r.typ + [])[0];',
-    'MATCH (n:pub) WHERE n.short_form starts with 'FBrf' and NOT exists(n.FlyBase) SET n.FlyBase = n.short_form;'
+    'MATCH (n:pub) WHERE n.short_form starts with "FBrf" and NOT exists(n.FlyBase) SET n.FlyBase = n.short_form;'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
