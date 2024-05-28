@@ -224,6 +224,14 @@ stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
 start = timeit.default_timer()
+print("Expand term_replace_by parameter into edge links...")
+vc.nc.commit_list(statements=[
+    "MATCH (n:Deprecated) WHERE exists(n.term_replaced_by) AND NOT (n)-[:term_replaced_by]->() WITH n, replace(n.term_replaced_by[0], ':', '_') AS id MATCH (r {short_form: id}) MERGE (n)-[t:term_replaced_by]->(r) ON CREATE SET t.iri = 'http://purl.obolibrary.org/obo/IAO_0100001', t.short_form = 'IAO_0100001', t.type = 'Annotation', t.label = 'term replaced by'"
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start) 
+
+start = timeit.default_timer()
 print("Fix targeted schema issues...")
 vc.nc.commit_list(statements=[
     'MATCH ()-[r]->() WHERE EXISTS(r.pub) SET r.pub = r.pub + [];',
