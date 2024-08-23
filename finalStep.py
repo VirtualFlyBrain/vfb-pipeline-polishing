@@ -1,7 +1,7 @@
 import timeit
 import os
 from vfb_connect.cross_server_tools import VfbConnect
-vc = VfbConnect(neo_endpoint="http://pdb.ug.virtualflybrain.org", neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
+vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
 
 start = timeit.default_timer()
 print("Clean BLOCKED images removing anatomical ind and channel...")
