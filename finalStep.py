@@ -140,53 +140,60 @@ print('Run time: ', stop - start)
 
 start = timeit.default_timer()
 print("Adding ALL SWC <-> SWC NBLAST scores...")
-import csv
-vc = None
-start = timeit.default_timer()
-tsv_file = open("swc_swc.tsv")
-read_tsv = csv.reader(tsv_file, delimiter="\t")
-statements = []
-for row in read_tsv:
-    if row[0].startswith('VFB_'):
-        try:
-            m = " SET r.mirrored=false"
-            if 'y' in row[3]:
-                m = " SET r.mirrored=true"
-            statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN ['" + str(row[0]) + "'] AND s.short_form IN ['" + str(row[1]) + "'] MERGE (s)-[r:has_similar_morphology_to {iri:'http://n2o.neo/custom/has_similar_morphology_to',short_form:'has_similar_morphology_to',type: 'Annotation'}]->(b) SET r.NBLAST_score=[" + row[2] + "]" + m)
-        except:
-            print(row)
-
-statements.append("MATCH (a:Individual)-[r:has_similar_morphology_to]->(b:Individual) WHERE exists(r.NBLAST_score) SET a:NBLAST SET b:NBLAST")
-
 vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
-try:
-    vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
-except:
-    print(statements)
+
+start = timeit.default_timer()
+print("Loading SWC <-> SWC NBLAST scores from CSV...")
+
+vc.nc.commit_list(statements=[
+    '''
+    USING PERIODIC COMMIT 1000
+    LOAD CSV WITH HEADERS FROM "file:///swc_swc.tsv" AS row FIELDTERMINATOR '\\t'
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target})
+    MERGE (s)-[r:has_similar_morphology_to {
+        iri: 'http://n2o.neo/custom/has_similar_morphology_to', 
+        short_form: 'has_similar_morphology_to', 
+        type: 'Annotation'
+    }]->(b)
+    SET r.NBLAST_score = [toFloat(row.score)],
+        r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END
+    '''
+])
+
+vc.nc.commit_list(statements=[
+    '''
+    MATCH (a:Individual)-[r:has_similar_morphology_to]->(b:Individual)
+    WHERE exists(r.NBLAST_score)
+    SET a:NBLAST, b:NBLAST
+    '''
+])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
-print("Adding SPLITS <-> SWC NBLAST scores...")
-vc = None
-start = timeit.default_timer()
-tsv_file = open("splits_swc.tsv")
-read_tsv = csv.reader(tsv_file, delimiter="\t")
-statements = []
-for row in read_tsv:
-    if row[0].startswith('VFB_'):
-        try:
-            statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN ['" + str(row[1]) + "'] AND s.short_form IN ['" + str(row[0]) + "'] MERGE (s)-[r:has_similar_morphology_to_part_of {iri:'http://n2o.neo/custom/has_similar_morphology_to_part_of',short_form:'has_similar_morphology_to_part_of',type: 'Annotation'}]->(b) SET r.NBLAST_score=[" + row[2] + "]")
-        except:
-            print(row)
+print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
 
-statements.append("MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual) WHERE exists(r.NBLAST_score) SET a:NBLASTexp SET b:NBLASTexp")
+vc.nc.commit_list(statements=[
+    '''
+    USING PERIODIC COMMIT 1000
+    LOAD CSV WITH HEADERS FROM "file:///splits_swc.tsv" AS row FIELDTERMINATOR '\\t'
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target})
+    MERGE (s)-[r:has_similar_morphology_to_part_of {
+        iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', 
+        short_form: 'has_similar_morphology_to_part_of', 
+        type: 'Annotation'
+    }]->(b)
+    SET r.NBLAST_score = [toFloat(row.score)]
+    '''
+])
 
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
-try:
-    vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
-except:
-    print(statements)
+vc.nc.commit_list(statements=[
+    '''
+    MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
+    WHERE exists(r.NBLAST_score)
+    SET a:NBLASTexp, b:NBLASTexp
+    '''
+])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
@@ -194,41 +201,44 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 vc = None
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
-print("loading lookups...")
 vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 
-result = vc.nc.commit_list(statements=["MATCH (n:API {short_form:'jrc_slide_code_api'})<-[r:database_cross_reference]-(i:Individual:Adult) WHERE (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form:'VFBc_00101567'}) WITH r.accession as id, i.short_form as vfbid ORDER BY id ASC WITH distinct {dbid:id,vfbid:collect(vfbid)} as cross RETURN collect(cross) as lookup"])
-lookup = result[0]['data'][0]['row'][0]
-slidecode = {}
-for row in lookup:
-    slidecode[row['dbid'][0]] = row['vfbid']
+print("Loading top20_scores_agg.tsv and creating relationships using direct Neo4j lookups...")
 
-result = vc.nc.commit_list(statements=["MATCH (n:Site {short_form:'neuronbridge'})<-[r:database_cross_reference]-(i:Individual:Adult)-[:has_source]->(:DataSet {short_form:'Xu2020NeuronsV1point1'}) WHERE (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form:'VFBc_00101567'}) WITH r.accession as id, i.short_form as vfbid ORDER BY id ASC WITH distinct {dbid:id,vfbid:collect(vfbid)} as cross RETURN collect(cross) as lookup"])
-lookup = result[0]['data'][0]['row'][0]
-bodyid = {}
-for row in lookup:
-    bodyid[row['dbid'][0]] = row['vfbid']
+# Using LOAD CSV to directly create relationships based on the lookups done within Neo4j
+vc.nc.commit_list(statements=[
+    """
+    USING PERIODIC COMMIT 1000
+    LOAD CSV WITH HEADERS FROM "file:///top20_scores_agg.tsv" AS row FIELDTERMINATOR '\\t'
+    
+    // Perform lookups directly in Neo4j
+    MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference]-(b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
+    WHERE r1.accession = row.neuprint_xref
+      AND (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    
+    MATCH (api:API {short_form: 'jrc_slide_code_api'})<-[r2:database_cross_reference]-(s:Individual:Adult)
+    WHERE r2.accession = row.slidecode_API
+      AND (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    
+    // Create the relationship if the nodes are found
+    MERGE (s)-[r:has_similar_morphology_to_part_of {
+        iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', 
+        short_form: 'has_similar_morphology_to_part_of', 
+        type: 'Annotation'
+    }]->(b)
+    
+    SET r.neuronbridge_score = [row.score]
+    """
+])
 
-import csv
-vc = None
-print("reading results...")
-tsv_file = open("top20_scores_agg.tsv")
-read_tsv = csv.reader(tsv_file, delimiter="\t")
-statements = []
-for row in read_tsv:
-    if row[0] in bodyid.keys():
-        if row[1] in slidecode.keys():
-            try:
-                statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN " + str(bodyid[row[0]]) + " AND s.short_form IN " + str(slidecode[row[1]]) + " MERGE (s)-[r:has_similar_morphology_to_part_of {iri:'http://n2o.neo/custom/has_similar_morphology_to_part_of',short_form:'has_similar_morphology_to_part_of',type: 'Annotation'}]->(b) SET r.neuronbridge_score=['" + row[2] + "'] ")
-            except:
-                print(row)
-
-statements.append("MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual) WHERE exists(r.neuronbridge_score) SET a:neuronbridge SET b:neuronbridge")
-
-print("loading into PDB...")
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
-
-vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
+# Add neuronbridge labels
+vc.nc.commit_list(statements=[
+    """
+    MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
+    WHERE exists(r.neuronbridge_score)
+    SET a:neuronbridge, b:neuronbridge
+    """
+])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
