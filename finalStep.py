@@ -7,9 +7,9 @@ start = timeit.default_timer()
 print("Fix RO id edge types...")
 vc.nc.commit_list(statements=[
 	'MATCH (a)<-[r1:RO_0002292]-(b) MERGE (a)<-[r2:expresses]-(b) SET r2=r1 SET r2.label="expresses" SET r2.type="Related" DELETE r1;',
-	'MATCH (a)<-[r1:RO_0002120]-(b) MERGE (a)<-[r2:synapsed_to]->(b) SET r2=r1 SET r2.label="synapsed to" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002175]-(b) MERGE (a)<-[r2:present_in_taxon]->(b) SET r2=r1 SET r2.label="present in taxon" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002579]-(b) MERGE (a)<-[r2:is_indirect_form_of]->(b) SET r2=r1 SET r2.label="is indirect form of" SET r2.type="Related" DELETE r1;'
+	'MATCH (a)<-[r1:RO_0002120]-(b) MERGE (a)<-[r2:synapsed_to]-(b) SET r2=r1 SET r2.label="synapsed to" SET r2.type="Related" DELETE r1;',
+    'MATCH (a)<-[r1:RO_0002175]-(b) MERGE (a)<-[r2:present_in_taxon]-(b) SET r2=r1 SET r2.label="present in taxon" SET r2.type="Related" DELETE r1;',
+    'MATCH (a)<-[r1:RO_0002579]-(b) MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2=r1 SET r2.label="is indirect form of" SET r2.type="Related" DELETE r1;'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
