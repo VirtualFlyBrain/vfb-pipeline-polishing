@@ -1,15 +1,39 @@
 import timeit
 import os
 from vfb_connect.cross_server_tools import VfbConnect
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
+vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 
 start = timeit.default_timer()
 print("Fix RO id edge types...")
 vc.nc.commit_list(statements=[
-    'MATCH (a)<-[r1:RO_0002292]-(b) MERGE (a)<-[r2:expresses]-(b) SET r2=r1 SET r2.label="expresses" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002120]-(b) MERGE (a)<-[r2:synapsed_to]-(b) SET r2=r1 SET r2.label="synapsed to" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002175]-(b) MERGE (a)<-[r2:present_in_taxon]-(b) SET r2=r1 SET r2.label="present in taxon" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002579]-(b) MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2=r1 SET r2.label="is indirect form of" SET r2.type="Related" DELETE r1;'
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1",
+        "CREATE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label='expresses' SET r2.type='Related' DELETE r1",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1",
+        "CREATE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label='synapsed to' SET r2.type='Related' DELETE r1",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1",
+        "CREATE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label='present in taxon' SET r2.type='Related' DELETE r1",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1",
+        "CREATE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label='is indirect form of' SET r2.type='Related' DELETE r1",
+        {batchSize: 1000, parallel: false}
+    )
+    '''
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
@@ -25,9 +49,27 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Add has_neuron/region_connectivity labels...")
 vc.nc.commit_list(statements=[
-    'MATCH p=(a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE exists(r.weight) SET a:has_neuron_connectivity SET b:has_neuron_connectivity',
-    'MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) SET n:has_region_connectivity',
-    'MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) SET n:has_region_connectivity'
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE exists(r.weight) RETURN a, b",
+        "SET a:has_neuron_connectivity SET b:has_neuron_connectivity",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) RETURN n",
+        "SET n:has_region_connectivity",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) RETURN n",
+        "SET n:has_region_connectivity",
+        {batchSize: 1000, parallel: false}
+    )
+    '''
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
@@ -69,106 +111,114 @@ stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
 start = timeit.default_timer()
-
-start = timeit.default_timer()
 print("Ensure all xrefs are on separate edges...")
-vc.nc.commit_list(statements=["MATCH (n)-[r:database_cross_reference]->(s:Site) WITH n, s, r, r.accession as accession WHERE size(accession) > 1 SET r.accession = [accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(accession) RETURN n, r, r1, s;",
-			     "MATCH (n)-[r:database_cross_reference]->(s:Site) WITH n, s, r, r.accession as accession WHERE size(accession) > 1 SET r.accession = [accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(accession) RETURN n, r, r1, s;",
-			     "MATCH (n)-[r:database_cross_reference]->(s:Site) WITH n, s, r, r.accession as accession WHERE size(accession) > 1 SET r.accession = [accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(accession) RETURN n, r, r1, s;"])
+vc.nc.commit_list(statements=[
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (n)-[r:database_cross_reference]->(s:Site) WHERE size(r.accession) > 1 RETURN n, s, r",
+        "SET r.accession = [r.accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(r.accession)",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (n)-[r:database_cross_reference]->(s:Site) WHERE size(r.accession) > 1 RETURN n, s, r",
+        "SET r.accession = [r.accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(r.accession)",
+        {batchSize: 1000, parallel: false}
+    )
+    ''',
+    '''
+    CALL apoc.periodic.iterate(
+        "MATCH (n)-[r:database_cross_reference]->(s:Site) WHERE size(r.accession) > 1 RETURN n, s, r",
+        "SET r.accession = [r.accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = tail(r.accession)",
+        {batchSize: 1000, parallel: false}
+    )
+    '''
+])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
 start = timeit.default_timer()
-
 print("Adding ALL SWC <-> SWC NBLAST scores...")
-
 import csv
 vc = None
-
 start = timeit.default_timer()
-
 tsv_file = open("swc_swc.tsv")
 read_tsv = csv.reader(tsv_file, delimiter="\t")
-statements=[]
+statements = []
 for row in read_tsv:
-	if row[0].startswith('VFB_'):
-		try:  
-			m = " SET r.mirrored=false"
-			if 'y' in row[3]:
-				m = " SET r.mirrored=true"
-			statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN ['" + str(row[0]) + "'] AND s.short_form IN ['" + str(row[1]) + "'] MERGE (s)-[r:has_similar_morphology_to {iri:'http://n2o.neo/custom/has_similar_morphology_to',short_form:'has_similar_morphology_to',type: 'Annotation'}]->(b) SET r.NBLAST_score=[" + row[2] + "]" + m)
-		except:
-			print(row)
+    if row[0].startswith('VFB_'):
+        try:
+            m = " SET r.mirrored=false"
+            if 'y' in row[3]:
+                m = " SET r.mirrored=true"
+            statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN ['" + str(row[0]) + "'] AND s.short_form IN ['" + str(row[1]) + "'] MERGE (s)-[r:has_similar_morphology_to {iri:'http://n2o.neo/custom/has_similar_morphology_to',short_form:'has_similar_morphology_to',type: 'Annotation'}]->(b) SET r.NBLAST_score=[" + row[2] + "]" + m)
+        except:
+            print(row)
 
 statements.append("MATCH (a:Individual)-[r:has_similar_morphology_to]->(b:Individual) WHERE exists(r.NBLAST_score) SET a:NBLAST SET b:NBLAST")
 
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
+vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 try:
-	vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
+    vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
 except:
-	print(statements)
+    print(statements)
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
 print("Adding SPLITS <-> SWC NBLAST scores...")
-
 vc = None
-
 start = timeit.default_timer()
-
 tsv_file = open("splits_swc.tsv")
 read_tsv = csv.reader(tsv_file, delimiter="\t")
-statements=[]
+statements = []
 for row in read_tsv:
-	if row[0].startswith('VFB_'):
-		try:  
-			statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN ['" + str(row[1]) + "'] AND s.short_form IN ['" + str(row[0]) + "'] MERGE (s)-[r:has_similar_morphology_to_part_of {iri:'http://n2o.neo/custom/has_similar_morphology_to_part_of',short_form:'has_similar_morphology_to_part_of',type: 'Annotation'}]->(b) SET r.NBLAST_score=[" + row[2] + "]")
-		except:
-			print(row)
+    if row[0].startswith('VFB_'):
+        try:
+            statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN ['" + str(row[1]) + "'] AND s.short_form IN ['" + str(row[0]) + "'] MERGE (s)-[r:has_similar_morphology_to_part_of {iri:'http://n2o.neo/custom/has_similar_morphology_to_part_of',short_form:'has_similar_morphology_to_part_of',type: 'Annotation'}]->(b) SET r.NBLAST_score=[" + row[2] + "]")
+        except:
+            print(row)
 
 statements.append("MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual) WHERE exists(r.NBLAST_score) SET a:NBLASTexp SET b:NBLASTexp")
 
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
+vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 try:
-	vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
+    vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
 except:
-	print(statements)
+    print(statements)
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
-
 
 start = timeit.default_timer()
 vc = None
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
 print("loading lookups...")
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
+vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 
-result=vc.nc.commit_list(statements=["MATCH (n:API {short_form:'jrc_slide_code_api'})<-[r:database_cross_reference]-(i:Individual:Adult) WHERE (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form:'VFBc_00101567'}) WITH r.accession as id, i.short_form as vfbid ORDER BY id ASC WITH distinct {dbid:id,vfbid:collect(vfbid)} as cross RETURN collect(cross) as lookup"])
-lookup=result[0]['data'][0]['row'][0]
-slidecode={}
+result = vc.nc.commit_list(statements=["MATCH (n:API {short_form:'jrc_slide_code_api'})<-[r:database_cross_reference]-(i:Individual:Adult) WHERE (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form:'VFBc_00101567'}) WITH r.accession as id, i.short_form as vfbid ORDER BY id ASC WITH distinct {dbid:id,vfbid:collect(vfbid)} as cross RETURN collect(cross) as lookup"])
+lookup = result[0]['data'][0]['row'][0]
+slidecode = {}
 for row in lookup:
-    slidecode[row['dbid'][0]]=row['vfbid']
+    slidecode[row['dbid'][0]] = row['vfbid']
 
-result=vc.nc.commit_list(statements=["MATCH (n:Site {short_form:'neuronbridge'})<-[r:database_cross_reference]-(i:Individual:Adult)-[:has_source]->(:DataSet {short_form:'Xu2020NeuronsV1point1'}) WHERE (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form:'VFBc_00101567'}) WITH r.accession as id, i.short_form as vfbid ORDER BY id ASC WITH distinct {dbid:id,vfbid:collect(vfbid)} as cross RETURN collect(cross) as lookup"])
-lookup=result[0]['data'][0]['row'][0]
-bodyid={}
+result = vc.nc.commit_list(statements=["MATCH (n:Site {short_form:'neuronbridge'})<-[r:database_cross_reference]-(i:Individual:Adult)-[:has_source]->(:DataSet {short_form:'Xu2020NeuronsV1point1'}) WHERE (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form:'VFBc_00101567'}) WITH r.accession as id, i.short_form as vfbid ORDER BY id ASC WITH distinct {dbid:id,vfbid:collect(vfbid)} as cross RETURN collect(cross) as lookup"])
+lookup = result[0]['data'][0]['row'][0]
+bodyid = {}
 for row in lookup:
-    bodyid[row['dbid'][0]]=row['vfbid']    
+    bodyid[row['dbid'][0]] = row['vfbid']
 
 import csv
-
 vc = None
 print("reading results...")
-
 tsv_file = open("top20_scores_agg.tsv")
 read_tsv = csv.reader(tsv_file, delimiter="\t")
-statements=[]
+statements = []
 for row in read_tsv:
     if row[0] in bodyid.keys():
         if row[1] in slidecode.keys():
-            try:  
+            try:
                 statements.append("MATCH (b:Individual),(s:Individual) WHERE b.short_form IN " + str(bodyid[row[0]]) + " AND s.short_form IN " + str(slidecode[row[1]]) + " MERGE (s)-[r:has_similar_morphology_to_part_of {iri:'http://n2o.neo/custom/has_similar_morphology_to_part_of',short_form:'has_similar_morphology_to_part_of',type: 'Annotation'}]->(b) SET r.neuronbridge_score=['" + row[2] + "'] ")
             except:
                 print(row)
@@ -176,8 +226,7 @@ for row in read_tsv:
 statements.append("MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual) WHERE exists(r.neuronbridge_score) SET a:neuronbridge SET b:neuronbridge")
 
 print("loading into PDB...")
-
-vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j',str(os.environ.get('PDBpass'))))
+vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 
 vc.nc.commit_list_in_chunks(statements=statements, chunk_length=2000)
 
@@ -303,4 +352,4 @@ vc.nc.commit_list(statements=[
 	"CREATE INDEX index_Neuron_symbols IF NOT EXISTS FOR (n:Neuron) ON (n.symbols);"
 ])
 stop = timeit.default_timer()
-print('Run time: ', stop - start) 
+print('Run time: ', stop - start)
