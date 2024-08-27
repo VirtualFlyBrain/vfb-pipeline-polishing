@@ -9,28 +9,28 @@ vc.nc.commit_list(statements=[
     '''
     CALL apoc.periodic.iterate(
         "MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1",
-        "CREATE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label='expresses' SET r2.type='Related' DELETE r1",
+        "MERGE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label='expresses' SET r2.type='Related' DELETE r1",
         {batchSize: 1000, parallel: false}
     )
     ''',
     '''
     CALL apoc.periodic.iterate(
         "MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1",
-        "CREATE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label='synapsed to' SET r2.type='Related' DELETE r1",
+        "MERGE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label='synapsed to' SET r2.type='Related' DELETE r1",
         {batchSize: 1000, parallel: false}
     )
     ''',
     '''
     CALL apoc.periodic.iterate(
         "MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1",
-        "CREATE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label='present in taxon' SET r2.type='Related' DELETE r1",
+        "MERGE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label='present in taxon' SET r2.type='Related' DELETE r1",
         {batchSize: 1000, parallel: false}
     )
     ''',
     '''
     CALL apoc.periodic.iterate(
         "MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1",
-        "CREATE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label='is indirect form of' SET r2.type='Related' DELETE r1",
+        "MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label='is indirect form of' SET r2.type='Related' DELETE r1",
         {batchSize: 1000, parallel: false}
     )
     '''
@@ -162,6 +162,12 @@ vc.nc.commit_list(statements=[
 
 vc.nc.commit_list(statements=[
     '''
+    MATCH (a:Individual)-[r1:has_similar_morphology_to]->(b:Individual) 
+    WHERE exists(r1.NBLAST_score)
+    MATCH (b)-[r2:has_similar_morphology_to]->(a) 
+    WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2
+    ''',
+    '''
     MATCH (a:Individual)-[r:has_similar_morphology_to]->(b:Individual)
     WHERE exists(r.NBLAST_score)
     SET a:NBLAST, b:NBLAST
@@ -188,6 +194,12 @@ vc.nc.commit_list(statements=[
 ])
 
 vc.nc.commit_list(statements=[
+    '''
+    MATCH (a:Individual)-[r1:has_similar_morphology_to_part_of]->(b:Individual) 
+    WHERE exists(r1.NBLAST_score)
+    MATCH (b)-[r2:has_similar_morphology_to_part_of]->(a) 
+    WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2
+    ''',
     '''
     MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
     WHERE exists(r.NBLAST_score)
@@ -221,11 +233,10 @@ vc.nc.commit_list(statements=[
       AND (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
     
     // Create the relationship if the nodes are found
-    MERGE (s)-[r:has_similar_morphology_to_part_of {
+    MERGE (s)-[r:has_similar_morphology_to_part_of]->(b) ON CREATE SET r += {
         iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', 
         short_form: 'has_similar_morphology_to_part_of', 
-        type: 'Annotation'
-    }]->(b)
+        type: 'Annotation'}
     
     SET r.neuronbridge_score = [row.score]
     """
@@ -233,6 +244,12 @@ vc.nc.commit_list(statements=[
 
 # Add neuronbridge labels
 vc.nc.commit_list(statements=[
+    '''
+    MATCH (a:Individual)-[r1:has_similar_morphology_to_part_of]->(b:Individual) 
+    WHERE exists(r1.neuronbridge_score)
+    MATCH (b)-[r2:has_similar_morphology_to_part_of]->(a) 
+    WHERE r1.neuronbridge_score[0] = r2.neuronbridge_score[0] DELETE r2
+    ''',
     """
     MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
     WHERE exists(r.neuronbridge_score)
