@@ -6,14 +6,13 @@ vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=(
 start = timeit.default_timer()
 print("Fix RO id edge types...")
 vc.nc.commit_list(statements=[
-	'MATCH (a)<-[r1:RO_0002292]-(b) MERGE (a)<-[r2:expresses]-(b) SET r2=r1 SET r2.label="expresses" SET r2.type="Related" DELETE r1;',
-	'MATCH (a)<-[r1:RO_0002120]-(b) MERGE (a)<-[r2:synapsed_to]-(b) SET r2=r1 SET r2.label="synapsed to" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002175]-(b) MERGE (a)<-[r2:present_in_taxon]-(b) SET r2=r1 SET r2.label="present in taxon" SET r2.type="Related" DELETE r1;',
-    'MATCH (a)<-[r1:RO_0002579]-(b) MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2=r1 SET r2.label="is indirect form of" SET r2.type="Related" DELETE r1;'
+	'USING PERIODIC COMMIT 5000 MATCH (a)<-[r1:RO_0002292]-(b) MERGE (a)<-[r2:expresses]-(b) SET r2=r1 SET r2.label="expresses" SET r2.type="Related" DELETE r1;',
+	'USING PERIODIC COMMIT 5000 MATCH (a)<-[r1:RO_0002120]-(b) MERGE (a)<-[r2:synapsed_to]-(b) SET r2=r1 SET r2.label="synapsed to" SET r2.type="Related" DELETE r1;',
+    'USING PERIODIC COMMIT 5000 MATCH (a)<-[r1:RO_0002175]-(b) MERGE (a)<-[r2:present_in_taxon]-(b) SET r2=r1 SET r2.label="present in taxon" SET r2.type="Related" DELETE r1;',
+    'USING PERIODIC COMMIT 5000 MATCH (a)<-[r1:RO_0002579]-(b) MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2=r1 SET r2.label="is indirect form of" SET r2.type="Related" DELETE r1;'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
-
 
 start = timeit.default_timer()
 print("Clean BLOCKED images removing anatomical ind and channel...")
@@ -26,9 +25,9 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Add has_neuron/region_connectivity labels...")
 vc.nc.commit_list(statements=[
-    'MATCH p=(a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE exists(r.weight) SET a:has_neuron_connectivity SET b:has_neuron_connectivity',
-    'MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) SET n:has_region_connectivity',
-    'MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) SET n:has_region_connectivity'
+    'USING PERIODIC COMMIT 5000 MATCH p=(a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE exists(r.weight) SET a:has_neuron_connectivity SET b:has_neuron_connectivity',
+    'USING PERIODIC COMMIT 5000 MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) SET n:has_region_connectivity',
+    'USING PERIODIC COMMIT 5000 MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) SET n:has_region_connectivity'
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
@@ -36,8 +35,8 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Clean NBLAST...")
 vc.nc.commit_list(statements=[
-    'MATCH (a:NBLAST) REMOVE a:NBLAST',
-    'MATCH (a:Individual)-[r1:has_similar_morphology_to]->(a) WHERE r1.NBLAST_score[0] = 1 DELETE r1',
+    'USING PERIODIC COMMIT 5000 MATCH (a:NBLAST) REMOVE a:NBLAST',
+    'USING PERIODIC COMMIT 5000 MATCH (a:Individual)-[r1:has_similar_morphology_to]->(a) WHERE r1.NBLAST_score[0] = 1 DELETE r1',
     'MATCH (a:Individual)-[r1:has_similar_morphology_to]->(b:Individual) MATCH (b)-[r2:has_similar_morphology_to]->(a) WHERE not r1.NBLAST_score[0] = r2.NBLAST_score[0] MATCH (b)-[r:has_similar_morphology_to]-(a) WITH r1, r2, avg(r.NBLAST_score[0]) as mean SET r1.NBLAST_score=[mean] DELETE r2',
     'MATCH (a:Individual)-[r1:has_similar_morphology_to]->(b:Individual) MATCH (b)-[r2:has_similar_morphology_to]->(a) WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2',
     'MATCH (a:Individual)-[nblast:has_similar_morphology_to]-(b:Individual) SET a:NBLAST SET b:NBLAST'
