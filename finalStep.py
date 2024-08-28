@@ -1,3 +1,4 @@
+import time
 import timeit
 import os
 from vfb_connect.cross_server_tools import VfbConnect
@@ -338,45 +339,70 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
-start = timeit.default_timer()
-print("Ensuring indexing and consistency checking...")
-vc.nc.commit_list(statements=[
-	"CALL db.indexes() YIELD name WITH name CALL apoc.schema.assert({}, {}) YIELD label, key, action RETURN label, key, action;",
-	"CREATE CONSTRAINT unique_Property_iri IF NOT EXISTS ON (n:Property) ASSERT n.iri IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Individual_IRI IF NOT EXISTS ON (n:Individual) ASSERT n.IRI IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Individual_iri IF NOT EXISTS ON (n:Individual) ASSERT n.iri IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Individual_short_form IF NOT EXISTS ON (n:Individual) ASSERT n.short_form IS UNIQUE;",
-	"CREATE CONSTRAINT unique_License_iri IF NOT EXISTS ON (n:License) ASSERT n.iri IS UNIQUE;",
-	"CREATE CONSTRAINT unique_License_short_form IF NOT EXISTS ON (n:License) ASSERT n.short_form IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Class_IRI IF NOT EXISTS ON (n:Class) ASSERT n.IRI IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Class_iri IF NOT EXISTS ON (n:Class) ASSERT n.iri IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Class_short_form IF NOT EXISTS ON (n:Class) ASSERT n.short_form IS UNIQUE;",
-	"CREATE CONSTRAINT unique_VFB_IRI IF NOT EXISTS ON (n:VFB) ASSERT n.IRI IS UNIQUE;",
-	"CREATE CONSTRAINT unique_VFB_short_form IF NOT EXISTS ON (n:VFB) ASSERT n.short_form IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Feature_IRI IF NOT EXISTS ON (n:Feature) ASSERT n.IRI IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Feature_short_form IF NOT EXISTS ON (n:Feature) ASSERT n.short_form IS UNIQUE;",
-	"CREATE CONSTRAINT unique_DataSet_iri IF NOT EXISTS ON (n:DataSet) ASSERT n.iri IS UNIQUE;",
-	"CREATE CONSTRAINT unique_DataSet_short_form IF NOT EXISTS ON (n:DataSet) ASSERT n.short_form IS UNIQUE;",
-	"CREATE CONSTRAINT unique_pub_PMID IF NOT EXISTS ON (n:pub) ASSERT n.PMID IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Site_iri IF NOT EXISTS ON (n:Site) ASSERT n.iri IS UNIQUE;",
-	"CREATE CONSTRAINT unique_Site_short_form IF NOT EXISTS ON (n:Site) ASSERT n.short_form IS UNIQUE;",
-	"CREATE INDEX index_Property_short_form IF NOT EXISTS FOR (n:Property) ON (n.short_form);",
-	"CREATE INDEX index_Property_label IF NOT EXISTS FOR (n:Property) ON (n.label);",
-	"CREATE INDEX index_Individual_label IF NOT EXISTS FOR (n:Individual) ON (n.label);",
-	"CREATE INDEX index_VFB_label IF NOT EXISTS FOR (n:VFB) ON (n.label);",
-	"CREATE INDEX index_Class_label IF NOT EXISTS FOR (n:Class) ON (n.label);",
-	"CREATE INDEX index_Feature_label IF NOT EXISTS FOR (n:Feature) ON (n.label);",
-	"CREATE CONSTRAINT unique_Neuron_short_form IF NOT EXISTS ON (n:Neuron) ASSERT n.short_form IS UNIQUE;",
-	"CREATE INDEX index_Neuron_label IF NOT EXISTS FOR (n:Neuron) ON (n.label);",
-	"CREATE INDEX index_Property_symbols IF NOT EXISTS FOR (n:Property) ON (n.symbols);",
-	"CREATE INDEX index_Individual_symbols IF NOT EXISTS FOR (n:Individual) ON (n.symbols);",
-	"CREATE INDEX index_VFB_symbols IF NOT EXISTS FOR (n:VFB) ON (n.symbols);",
-	"CREATE INDEX index_Class_symbols IF NOT EXISTS FOR (n:Class) ON (n.symbols);",
-	"CREATE INDEX index_Feature_symbols IF NOT EXISTS FOR (n:Feature) ON (n.symbols);",
-	"CREATE INDEX index_DataSet_symbols IF NOT EXISTS FOR (n:DataSet) ON (n.symbols);",
-	"CREATE INDEX index_pub_symbols IF NOT EXISTS FOR (n:pub) ON (n.symbols);",
-	"CREATE INDEX index_Site_symbols IF NOT EXISTS FOR (n:Site) ON (n.symbols);",
-	"CREATE INDEX index_Neuron_symbols IF NOT EXISTS FOR (n:Neuron) ON (n.symbols);"
-])
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
+# start = timeit.default_timer()
+# print("Ensuring indexing and consistency checking...")
+# vc.nc.commit_list(statements=[
+# 	"CALL db.indexes() YIELD name WITH name CALL apoc.schema.assert({}, {}) YIELD label, key, action RETURN label, key, action;",
+# 	"CREATE CONSTRAINT unique_Property_iri IF NOT EXISTS ON (n:Property) ASSERT n.iri IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Individual_IRI IF NOT EXISTS ON (n:Individual) ASSERT n.IRI IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Individual_iri IF NOT EXISTS ON (n:Individual) ASSERT n.iri IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Individual_short_form IF NOT EXISTS ON (n:Individual) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_License_iri IF NOT EXISTS ON (n:License) ASSERT n.iri IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_License_short_form IF NOT EXISTS ON (n:License) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Class_IRI IF NOT EXISTS ON (n:Class) ASSERT n.IRI IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Class_iri IF NOT EXISTS ON (n:Class) ASSERT n.iri IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Class_short_form IF NOT EXISTS ON (n:Class) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_VFB_IRI IF NOT EXISTS ON (n:VFB) ASSERT n.IRI IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_VFB_short_form IF NOT EXISTS ON (n:VFB) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Feature_IRI IF NOT EXISTS ON (n:Feature) ASSERT n.IRI IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Feature_short_form IF NOT EXISTS ON (n:Feature) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_DataSet_iri IF NOT EXISTS ON (n:DataSet) ASSERT n.iri IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_DataSet_short_form IF NOT EXISTS ON (n:DataSet) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_pub_PMID IF NOT EXISTS ON (n:pub) ASSERT n.PMID IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Site_iri IF NOT EXISTS ON (n:Site) ASSERT n.iri IS UNIQUE;",
+# 	"CREATE CONSTRAINT unique_Site_short_form IF NOT EXISTS ON (n:Site) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE INDEX index_Property_short_form IF NOT EXISTS FOR (n:Property) ON (n.short_form);",
+# 	"CREATE INDEX index_Property_label IF NOT EXISTS FOR (n:Property) ON (n.label);",
+# 	"CREATE INDEX index_Individual_label IF NOT EXISTS FOR (n:Individual) ON (n.label);",
+# 	"CREATE INDEX index_VFB_label IF NOT EXISTS FOR (n:VFB) ON (n.label);",
+# 	"CREATE INDEX index_Class_label IF NOT EXISTS FOR (n:Class) ON (n.label);",
+# 	"CREATE INDEX index_Feature_label IF NOT EXISTS FOR (n:Feature) ON (n.label);",
+# 	"CREATE CONSTRAINT unique_Neuron_short_form IF NOT EXISTS ON (n:Neuron) ASSERT n.short_form IS UNIQUE;",
+# 	"CREATE INDEX index_Neuron_label IF NOT EXISTS FOR (n:Neuron) ON (n.label);",
+# 	"CREATE INDEX index_Property_symbols IF NOT EXISTS FOR (n:Property) ON (n.symbols);",
+# 	"CREATE INDEX index_Individual_symbols IF NOT EXISTS FOR (n:Individual) ON (n.symbols);",
+# 	"CREATE INDEX index_VFB_symbols IF NOT EXISTS FOR (n:VFB) ON (n.symbols);",
+# 	"CREATE INDEX index_Class_symbols IF NOT EXISTS FOR (n:Class) ON (n.symbols);",
+# 	"CREATE INDEX index_Feature_symbols IF NOT EXISTS FOR (n:Feature) ON (n.symbols);",
+# 	"CREATE INDEX index_DataSet_symbols IF NOT EXISTS FOR (n:DataSet) ON (n.symbols);",
+# 	"CREATE INDEX index_pub_symbols IF NOT EXISTS FOR (n:pub) ON (n.symbols);",
+# 	"CREATE INDEX index_Site_symbols IF NOT EXISTS FOR (n:Site) ON (n.symbols);",
+# 	"CREATE INDEX index_Neuron_symbols IF NOT EXISTS FOR (n:Neuron) ON (n.symbols);"
+# ])
+# stop = timeit.default_timer()
+# print('Run time: ', stop - start)
+
+vc = None
+
+def is_periodic_commit_running():
+    query = """
+    CALL dbms.listQueries()
+    YIELD query, status
+    WHERE query CONTAINS 'USING PERIODIC COMMIT' AND status = 'running' AND NOT query CONTAINS 'dbms.listQueries'
+    RETURN count(*) as running
+    """
+    vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
+    result = vc.nc.commit_list(statements=[query])
+    return result[0]['data'][0]['row'][0] > 0
+
+def monitor_queries(check_interval=1800):  # 1800 seconds = 30 minutes
+    print("Monitoring for running 'USING PERIODIC COMMIT' queries...")
+    while True:
+        if is_periodic_commit_running():
+            print(f"A 'USING PERIODIC COMMIT' query is still running. Checking again in {check_interval // 60} minutes...")
+            time.sleep(check_interval)
+        else:
+            print("No 'USING PERIODIC COMMIT' queries are running. Exiting monitoring.")
+            break
+
+monitor_queries()
