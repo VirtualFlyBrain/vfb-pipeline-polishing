@@ -203,22 +203,23 @@ vc.nc.commit_list(statements=[
     }]->(b)
     SET r.NBLAST_score = [toFloat(row.score)],
         r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END
+    SET s:NBLAST, b:NBLAST
     '''
 ])
 
-vc.nc.commit_list(statements=[
-    '''
-    MATCH (a:Individual)-[r1:has_similar_morphology_to]->(b:Individual) 
-    WHERE exists(r1.NBLAST_score)
-    MATCH (b)-[r2:has_similar_morphology_to]->(a) 
-    WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2
-    ''',
-    '''
-    MATCH (a:Individual)-[r:has_similar_morphology_to]->(b:Individual)
-    WHERE exists(r.NBLAST_score)
-    SET a:NBLAST, b:NBLAST
-    '''
-])
+# vc.nc.commit_list(statements=[
+#     '''
+#     MATCH (a:Individual)-[r1:has_similar_morphology_to]->(b:Individual) 
+#     WHERE exists(r1.NBLAST_score)
+#     MATCH (b)-[r2:has_similar_morphology_to]->(a) 
+#     WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2
+#     ''',
+#     '''
+#     MATCH (a:Individual)-[r:has_similar_morphology_to]->(b:Individual)
+#     WHERE exists(r.NBLAST_score)
+#     SET a:NBLAST, b:NBLAST
+#     '''
+# ])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
@@ -235,23 +236,24 @@ vc.nc.commit_list(statements=[
         short_form: 'has_similar_morphology_to_part_of', 
         type: 'Annotation'
     }]->(b)
-    SET r.NBLAST_score = [toFloat(row.score)]
+    SET r.NBLAST_score = [toFloat(row.score)] 
+    SET s:NBLASTexp, b:NBLASTexp
     '''
 ])
 
-vc.nc.commit_list(statements=[
-    '''
-    MATCH (a:Individual)-[r1:has_similar_morphology_to_part_of]->(b:Individual) 
-    WHERE exists(r1.NBLAST_score)
-    MATCH (b)-[r2:has_similar_morphology_to_part_of]->(a) 
-    WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2
-    ''',
-    '''
-    MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
-    WHERE exists(r.NBLAST_score)
-    SET a:NBLASTexp, b:NBLASTexp
-    '''
-])
+# vc.nc.commit_list(statements=[
+#     '''
+#     MATCH (a:Individual)-[r1:has_similar_morphology_to_part_of]->(b:Individual) 
+#     WHERE exists(r1.NBLAST_score)
+#     MATCH (b)-[r2:has_similar_morphology_to_part_of]->(a) 
+#     WHERE r1.NBLAST_score[0] = r2.NBLAST_score[0] DELETE r2
+#     ''',
+#     '''
+#     MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
+#     WHERE exists(r.NBLAST_score)
+#     SET a:NBLASTexp, b:NBLASTexp
+#     '''
+# ])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
@@ -284,24 +286,25 @@ vc.nc.commit_list(statements=[
         short_form: 'has_similar_morphology_to_part_of', 
         type: 'Annotation'}
     
-    SET r.neuronbridge_score = [row.score]
+    SET r.neuronbridge_score = [row.score] 
+    SET s:neuronbridge, b:neuronbridge
     """
 ])
 
-# Add neuronbridge labels
-vc.nc.commit_list(statements=[
-    '''
-    MATCH (a:Individual)-[r1:has_similar_morphology_to_part_of]->(b:Individual) 
-    WHERE exists(r1.neuronbridge_score)
-    MATCH (b)-[r2:has_similar_morphology_to_part_of]->(a) 
-    WHERE r1.neuronbridge_score[0] = r2.neuronbridge_score[0] DELETE r2
-    ''',
-    """
-    MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
-    WHERE exists(r.neuronbridge_score)
-    SET a:neuronbridge, b:neuronbridge
-    """
-])
+# # Add neuronbridge labels
+# vc.nc.commit_list(statements=[
+#     '''
+#     MATCH (a:Individual)-[r1:has_similar_morphology_to_part_of]->(b:Individual) 
+#     WHERE exists(r1.neuronbridge_score)
+#     MATCH (b)-[r2:has_similar_morphology_to_part_of]->(a) 
+#     WHERE r1.neuronbridge_score[0] = r2.neuronbridge_score[0] DELETE r2
+#     ''',
+#     """
+#     MATCH (a:Individual)-[r:has_similar_morphology_to_part_of]->(b:Individual)
+#     WHERE exists(r.neuronbridge_score)
+#     SET a:neuronbridge, b:neuronbridge
+#     """
+# ])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start) 
