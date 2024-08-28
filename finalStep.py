@@ -261,35 +261,42 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 vc = None
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
+# Neo4j connection setup using VfbConnect
 vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 
-print("Loading top20_scores_agg.tsv and creating relationships using direct Neo4j lookups...")
+start = timeit.default_timer()
+print("Loading top20_scores_agg.tsv and creating relationships using direct Neo4j lookups with parallel processing...")
 
-# Using LOAD CSV to directly create relationships based on the lookups done within Neo4j
+# Using APOC periodic iterate to process LOAD CSV in parallel
 vc.nc.commit_list(statements=[
     """
-    USING PERIODIC COMMIT 1000
-    LOAD CSV WITH HEADERS FROM "file:///top20_scores_agg.tsv" AS row FIELDTERMINATOR '\\t'
-    
-    // Perform lookups directly in Neo4j
-    MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference]-(b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
-    WHERE r1.accession = row.neuprint_xref
-      AND (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    
-    MATCH (api:API {short_form: 'jrc_slide_code_api'})<-[r2:database_cross_reference]-(s:Individual:Adult)
-    WHERE r2.accession = row.slidecode_API
-      AND (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    
-    // Create the relationship if the nodes are found
-    MERGE (s)-[r:has_similar_morphology_to_part_of]->(b) ON CREATE SET r += {
-        iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', 
-        short_form: 'has_similar_morphology_to_part_of', 
-        type: 'Annotation'}
-    
-    SET r.neuronbridge_score = [row.score] 
-    SET s:neuronbridge, b:neuronbridge
+    CALL apoc.periodic.iterate(
+        'LOAD CSV WITH HEADERS FROM "file:///top20_scores_agg.tsv" AS row FIELDTERMINATOR "\\t" RETURN row',
+        '
+        // Perform lookups directly in Neo4j using relationship properties
+        MATCH (body:Site {short_form: "neuronbridge"})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)
+        -[:has_source]->(:DataSet {short_form: "Xu2020NeuronsV1point1"})
+        WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: "VFBc_00101567"})
+        
+        MATCH (api:API {short_form: "jrc_slide_code_api"})<-[r2:database_cross_reference {accession: row.slidecode_API}]-(s:Individual:Adult)
+        WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: "VFBc_00101567"})
+        
+        // Create the relationship if the nodes are found
+        MERGE (s)-[r:has_similar_morphology_to_part_of]->(b)
+        ON CREATE SET r.iri = "http://n2o.neo/custom/has_similar_morphology_to_part_of", 
+                      r.short_form = "has_similar_morphology_to_part_of", 
+                      r.type = "Annotation",
+                      r.neuronbridge_score = [row.score]
+        
+        SET s:neuronbridge, b:neuronbridge
+        ',
+        {batchSize: 1000, parallel: true}
+    )
     """
 ])
+
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
 
 # # Add neuronbridge labels
 # vc.nc.commit_list(statements=[
