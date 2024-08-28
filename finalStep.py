@@ -100,10 +100,53 @@ stop = timeit.default_timer()
 print('Run time: ', stop - start) 
 
 start = timeit.default_timer()
-print("expand any missing synonyms...")
-vc.nc.commit_list(statements=['MATCH (primary) WHERE exists(primary.has_exact_synonym) WITH primary, reduce(syns = [], syn IN primary.has_exact_synonym | syns + [apoc.convert.fromJsonMap(syn)]) as syns UNWIND syns as syn MATCH (p:pub {short_form:coalesce(split(syn.annotations.database_cross_reference[0],":")[1],"Unattributed")}) MERGE (primary)-[r:has_reference {typ:"syn",value:[syn.value]}]->(p) ON CREATE SET r += {iri: "http://purl.org/dc/terms/references", scope: "has_exact_synonym", short_form: "references", typ: "syn", label: "has_reference", type: "Annotation"}','MATCH (primary) WHERE exists(primary.has_broad_synonym) WITH primary, reduce(syns = [], syn IN primary.has_broad_synonym | syns + [apoc.convert.fromJsonMap(syn)]) as syns UNWIND syns as syn MATCH (p:pub {short_form:coalesce(split(syn.annotations.database_cross_reference[0],":")[1],"Unattributed")}) MERGE (primary)-[r:has_reference {typ:"syn",value:[syn.value]}]->(p) ON CREATE SET r += {iri: "http://purl.org/dc/terms/references", scope: "has_broad_synonym", short_form: "references", typ: "syn", label: "has_reference", type: "Annotation"}','MATCH (primary) WHERE exists(primary.has_narrow_synonym) WITH primary, reduce(syns = [], syn IN primary.has_narrow_synonym | syns + [apoc.convert.fromJsonMap(syn)]) as syns UNWIND syns as syn MATCH (p:pub {short_form:coalesce(split(syn.annotations.database_cross_reference[0],":")[1],"Unattributed")}) MERGE (primary)-[r:has_reference {typ:"syn",value:[syn.value]}]->(p) ON CREATE SET r += {iri: "http://purl.org/dc/terms/references", scope: "has_narrow_synonym", short_form: "references", typ: "syn", label: "has_reference", type: "Annotation"}','MATCH (primary) WHERE exists(primary.has_related_synonym) WITH primary, reduce(syns = [], syn IN primary.has_related_synonym | syns + [apoc.convert.fromJsonMap(syn)]) as syns UNWIND syns as syn MATCH (p:pub {short_form:coalesce(split(syn.annotations.database_cross_reference[0],":")[1],"Unattributed")}) MERGE (primary)-[r:has_reference {typ:"syn",value:[syn.value]}]->(p) ON CREATE SET r += {iri: "http://purl.org/dc/terms/references", scope: "has_related_synonym", short_form: "references", typ: "syn", label: "has_reference", type: "Annotation"}'])
+print("Expand any missing synonyms...")
+
+# The general query pattern for handling synonyms
+synonym_queries = [
+    {
+        "synonym_type": "has_exact_synonym",
+        "scope": "has_exact_synonym"
+    },
+    {
+        "synonym_type": "has_broad_synonym",
+        "scope": "has_broad_synonym"
+    },
+    {
+        "synonym_type": "has_narrow_synonym",
+        "scope": "has_narrow_synonym"
+    },
+    {
+        "synonym_type": "has_related_synonym",
+        "scope": "has_related_synonym"
+    }
+]
+
+# Iterate through each synonym type to process
+for query in synonym_queries:
+    vc.nc.commit_list(statements=[
+        f"""
+        CALL apoc.periodic.iterate(
+            'MATCH (primary) WHERE exists(primary.{query['synonym_type']}) RETURN primary',
+            'WITH primary, reduce(syns = [], syn IN primary.{query['synonym_type']} | syns + [apoc.convert.fromJsonMap(syn)]) as syns
+             UNWIND syns as syn
+             MATCH (p:pub {{short_form: coalesce(split(syn.annotations.database_cross_reference[0], ":")[1], "Unattributed")}})
+             MERGE (primary)-[r:has_reference {{typ:"syn", value:[syn.value]}}]->(p)
+             ON CREATE SET r += {{
+                 iri: "http://purl.org/dc/terms/references",
+                 scope: "{query['scope']}",
+                 short_form: "references",
+                 typ: "syn",
+                 label: "has_reference",
+                 type: "Annotation"
+             }}',
+            {{batchSize: 1000, iterateList: true}}
+        )
+        """
+    ])
+
 stop = timeit.default_timer()
-print('Run time: ', stop - start) 
+print('Run time: ', stop - start)
 
 start = timeit.default_timer()
 print("Ensure all depreciated are labelled as such...")
