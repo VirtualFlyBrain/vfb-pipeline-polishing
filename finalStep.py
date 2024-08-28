@@ -123,8 +123,9 @@ synonym_queries = [
 ]
 
 # Iterate through each synonym type to process
+statements = []
 for query in synonym_queries:
-    vc.nc.commit_list(statements=[
+    statements.append(
         f"""
         CALL apoc.periodic.iterate(
             'MATCH (primary) WHERE exists(primary.{query['synonym_type']}) RETURN primary',
@@ -143,7 +144,8 @@ for query in synonym_queries:
             {{batchSize: 1000, iterateList: true}}
         )
         """
-    ])
+    )
+vc.nc.commit_list(statements)
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
