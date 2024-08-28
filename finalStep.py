@@ -405,4 +405,7 @@ def monitor_queries(check_interval=1800):  # 1800 seconds = 30 minutes
             print("No 'USING PERIODIC COMMIT' queries are running. Exiting monitoring.")
             break
 
+start = timeit.default_timer()
 monitor_queries()
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
