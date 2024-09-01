@@ -7,7 +7,7 @@ vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=(
 start = timeit.default_timer()
 print("Fix RO id edge types...")
 vc.nc.commit_list(statements=[
-	'MATCH (n:ObjectProperty) where n.label starts with 'RO_' SET n.label = n.label_rdfs[0]',
+    'MATCH (n:ObjectProperty) where n.label starts with 'RO_' SET n.label = n.label_rdfs[0]',
     '''
     CALL apoc.periodic.iterate(
         "MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1",
