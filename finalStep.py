@@ -238,7 +238,7 @@ start = timeit.default_timer()
 print("Fix xref labels being used instead of label_rdfs...")
 vc.nc.commit_list(statements=[
     "MATCH (n) WHERE n.short_form = n.label AND EXISTS(n.label_rdfs) AND NOT n.label_rdfs[0] = n.label SET n.label=n.label_rdfs[0]",
-    "MATCH (c:Class) WHERE n.label STARTS WITH 'wiki' AND EXISTS(c.label_rdfs) SET c.label = c.label_rdfs[0]",
+    "MATCH (c:Class) WHERE c.label STARTS WITH 'wiki' AND EXISTS(c.label_rdfs) SET c.label = c.label_rdfs[0]",
     "MATCH (c:Class) WHERE c.short_form STARTS WITH 'GO_' AND NOT c.label = c.label_rdfs[0] SET c.label = c.label_rdfs[0]"
 ])
 stop = timeit.default_timer()
