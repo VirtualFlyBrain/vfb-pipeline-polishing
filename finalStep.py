@@ -75,11 +75,29 @@ synonym_queries = [
     {"synonym_type": "has_narrow_synonym", "scope": "has_narrow_synonym"},
     {"synonym_type": "has_related_synonym", "scope": "has_related_synonym"}
 ]
+
 statements = []
 for query in synonym_queries:
-    statements.append(
-        f"CALL apoc.periodic.iterate('MATCH (primary) WHERE EXISTS(primary.{query['synonym_type']}) RETURN primary', 'WITH primary, REDUCE(syns = [], syn IN primary.{query['synonym_type']} | syns + [apoc.convert.fromJsonMap(syn)]) AS syns UNWIND syns AS syn MATCH (p:pub {{short_form: COALESCE(SPLIT(syn.annotations.database_cross_reference[0], ':')[1], 'Unattributed')}}) MERGE (primary)-[r:has_reference {{typ:\"syn\", value:[syn.value]}}]->(p) ON CREATE SET r += {{ iri: \"http://purl.org/dc/terms/references\", scope: \"{query['scope']}\", short_form: \"references\", typ: \"syn\", label: \"has_reference\", type: \"Annotation\" }}', {{batchSize: 1000, iterateList: true}})"
-    )
+    statements.append(f"""
+CALL apoc.periodic.iterate(
+    'MATCH (primary) WHERE EXISTS(primary.{query['synonym_type']}) RETURN primary',
+    '
+    WITH primary, REDUCE(syns = [], syn IN primary.{query['synonym_type']} | syns + [apoc.convert.fromJsonMap(syn)]) AS syns
+    UNWIND syns AS syn
+    MATCH (p:pub {{short_form: COALESCE(SPLIT(syn.annotations.database_cross_reference[0], \':\')[1], \'Unattributed\')}})
+    MERGE (primary)-[r:has_reference {{typ:\'syn\', value:[syn.value]}}]->(p)
+    ON CREATE SET r += {{
+        iri: \'http://purl.org/dc/terms/references\',
+        scope: \'{query['scope']}\',
+        short_form: \'references\',
+        typ: \'syn\',
+        label: \'has_reference\',
+        type: \'Annotation\'
+    }}
+    ',
+    {{batchSize: 1000, iterateList: true}}
+)
+""")
 vc.nc.commit_list(statements)
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
