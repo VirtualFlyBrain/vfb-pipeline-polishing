@@ -186,7 +186,19 @@ vc.nc.commit_list(statements=[
     "MATCH (n:Cluster) WHERE EXISTS(n.uniqueFacets) AND NOT 'Cluster' IN n.uniqueFacets SET n.uniqueFacets= n.uniqueFacets + 'Cluster'",
     "MATCH (primary:Individual:Cluster)-[e:expresses]->(g:Gene:Class) SET g:hasScRNAseq",
     "MATCH (parent:Cell)<-[:SUBCLASSOF*]-(primary:Class)<-[:composed_primarily_of]-(c:Cluster)-[:has_source]->(ds:scRNAseq_DataSet) SET primary:hasScRNAseq SET parent:hasScRNAseq",
-    "MATCH ()-[r:expresses]->() WHERE EXISTS(r.expression_level) WITH r, SPLIT(TOSTRING(r.expression_level[0]), '.') AS parts WITH SIZE(parts[0]) AS beforeDecimalLength, SIZE(parts[1]) AS afterDecimalLength, r WITH MAX(beforeDecimalLength) AS maxBeforeDecimal, MAX(afterDecimalLength) AS maxAfterDecimal, COLLECT(r) AS relationships UNWIND relationships AS r WITH maxBeforeDecimal, maxAfterDecimal, r, SPLIT(TOSTRING(r.expression_level[0]), '.') AS parts WITH maxBeforeDecimal, maxAfterDecimal, r, parts, APOC.TEXT.LPAD(parts[0], maxBeforeDecimal, '0') AS beforeDecimalPadded, APOC.TEXT.RPAD(parts[1], maxAfterDecimal, '0') AS afterDecimalPadded SET r.expression_level_padded = [beforeDecimalPadded + '.' + afterDecimalPadded]"
+    """
+    MATCH ()-[r:expresses]->()
+    WHERE EXISTS(r.expression_level)
+    WITH r, SPLIT(TOSTRING(r.expression_level[0]), '.') AS parts
+    WITH SIZE(parts[0]) AS beforeDecimalLength, SIZE(parts[1]) AS afterDecimalLength, r
+    WITH MAX(beforeDecimalLength) AS maxBeforeDecimal, MAX(afterDecimalLength) AS maxAfterDecimal, COLLECT(r) AS relationships
+    UNWIND relationships AS r
+    WITH maxBeforeDecimal, maxAfterDecimal, r, SPLIT(TOSTRING(r.expression_level[0]), '.') AS parts
+    WITH maxBeforeDecimal, maxAfterDecimal, r, parts,
+         apoc.text.lpad(parts[0], maxBeforeDecimal, '0') AS beforeDecimalPadded,
+         apoc.text.rpad(parts[1], maxAfterDecimal, '0') AS afterDecimalPadded
+    SET r.expression_level_padded = [beforeDecimalPadded + '.' + afterDecimalPadded]
+    """
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
