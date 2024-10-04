@@ -244,29 +244,55 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
-# Monitoring function for running 'USING PERIODIC COMMIT' queries
-def is_periodic_commit_running():
-    query = (
-        "CALL dbms.listQueries() "
-        "YIELD query, status "
-        "WHERE query CONTAINS 'USING PERIODIC COMMIT' AND status = 'running' AND NOT query CONTAINS 'dbms.listQueries' "
-        "RETURN COUNT(*) AS running"
-    )
-    vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
-    result = vc.nc.commit_list(statements=[query])
-    return result[0]['data'][0]['row'][0] > 0
+# Monitoring function for running APOC periodic jobs
+def is_apoc_jobs_running():
+    query = """
+    CALL dbms.listQueries() 
+    YIELD query, status 
+    WHERE query CONTAINS 'apoc.periodic.iterate' AND status = 'running' 
+    RETURN COUNT(*) AS running
+    """
+    try:
+        result = vc.nc.commit_list(statements=[query])
+        # Parsing the result based on the expected response structure
+        if result and 'data' in result[0] and result[0]['data']:
+            # Extract the count from the first row
+            running_count = result[0]['data'][0]['row'][0]
+            return running_count > 1
+        return False
+    except Exception as e:
+        print(f"Error while checking APOC jobs: {e}")
+        # Decide whether to treat this as running or not based on your requirements
+        return True  # Assume jobs are running if there's an error
 
-def monitor_queries(check_interval=1800):
-    print("Monitoring for running 'USING PERIODIC COMMIT' queries...")
-    while True:
-        if is_periodic_commit_running():
-            print(f"A 'USING PERIODIC COMMIT' query is still running. Checking again in {check_interval // 60} minutes...")
-            time.sleep(check_interval)
-        else:
-            print("No 'USING PERIODIC COMMIT' queries are running. Exiting monitoring.")
-            break
+def monitor_apoc_jobs(check_interval=1800, max_wait_time=86400):
+    """
+    Monitor APOC periodic jobs and wait until all running jobs have completed.
+    
+    :param check_interval: Time in seconds between checks (default: 1800 seconds = 30 minutes)
+    :param max_wait_time: Maximum time in seconds to wait before aborting (default: 86400 seconds = 24 hours)
+    """
+    print("Monitoring for running APOC periodic jobs...")
+    start_time = time.time()
+    try:
+        while True:
+            if is_apoc_jobs_running():
+                elapsed = time.time() - start_time
+                if elapsed > max_wait_time:
+                    print("Maximum wait time exceeded. Exiting monitoring.")
+                    break
+                minutes = check_interval // 60
+                print(f"An APOC periodic job is still running. Checking again in {minutes} minutes...")
+                time.sleep(check_interval)
+            else:
+                print("No APOC periodic jobs are running. Exiting monitoring.")
+                break
+    except KeyboardInterrupt:
+        print("Monitoring interrupted by user. Exiting.")
 
-start = timeit.default_timer()
-monitor_queries()
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
+# Start monitoring after executing all commit_list statements
+import time  # Ensure time is imported for time.time()
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
