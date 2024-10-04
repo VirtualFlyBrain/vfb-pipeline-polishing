@@ -6,6 +6,52 @@ from vfb_connect.cross_server_tools import VfbConnect
 # Set up the VfbConnect instance
 vc = VfbConnect(neo_endpoint=str(os.environ.get('PDBserver')), neo_credentials=('neo4j', str(os.environ.get('PDBpass'))))
 
+# Monitoring function for running APOC periodic jobs
+def is_apoc_jobs_running():
+    query = """
+    CALL dbms.listQueries() 
+    YIELD query, status 
+    WHERE query CONTAINS 'apoc.periodic.iterate' AND status = 'running' 
+    RETURN COUNT(*) AS running
+    """
+    try:
+        result = vc.nc.commit_list(statements=[query])
+        # Parsing the result based on the expected response structure
+        if result and 'data' in result[0] and result[0]['data']:
+            # Extract the count from the first row
+            running_count = result[0]['data'][0]['row'][0]
+            return running_count > 1
+        return False
+    except Exception as e:
+        print(f"Error while checking APOC jobs: {e}")
+        # Decide whether to treat this as running or not based on your requirements
+        return True  # Assume jobs are running if there's an error
+
+def monitor_apoc_jobs(check_interval=1800, max_wait_time=86400):
+    """
+    Monitor APOC periodic jobs and wait until all running jobs have completed.
+    
+    :param check_interval: Time in seconds between checks (default: 1800 seconds = 30 minutes)
+    :param max_wait_time: Maximum time in seconds to wait before aborting (default: 86400 seconds = 24 hours)
+    """
+    print("Monitoring for running APOC periodic jobs...")
+    start_time = time.time()
+    try:
+        while True:
+            if is_apoc_jobs_running():
+                elapsed = time.time() - start_time
+                if elapsed > max_wait_time:
+                    print("Maximum wait time exceeded. Exiting monitoring.")
+                    break
+                minutes = check_interval // 60
+                print(f"An APOC periodic job is still running. Checking again in {minutes} minutes...")
+                time.sleep(check_interval)
+            else:
+                print("No APOC periodic jobs are running. Exiting monitoring.")
+                break
+    except KeyboardInterrupt:
+        print("Monitoring interrupted by user. Exiting.")
+
 # Fix RO id edge types
 start = timeit.default_timer()
 print("Fix RO id edge types...")
@@ -19,6 +65,12 @@ vc.nc.commit_list(statements=[
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
+
+# Start monitoring after executing all commit_list statements
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
 # Clean BLOCKED images removing anatomical ind and channel
 start = timeit.default_timer()
@@ -39,6 +91,12 @@ vc.nc.commit_list(statements=[
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
+
+# Start monitoring after executing all commit_list statements
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
 # Clean NBLAST
 start = timeit.default_timer()
@@ -102,6 +160,12 @@ vc.nc.commit_list(statements)
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Start monitoring after executing all commit_list statements
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
 # Ensure all deprecated are labelled as such
 start = timeit.default_timer()
 print("Ensure all deprecated are labelled as such...")
@@ -119,6 +183,12 @@ vc.nc.commit_list(statements=[
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
+
+# Start monitoring after executing all commit_list statements
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
 # Adding ALL SWC <-> SWC NBLAST scores
 start = timeit.default_timer()
@@ -138,14 +208,38 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
-# Add Neuronbridge Hemibrain <-> slide code top 20 scores
+# Add Neuronbridge Hemibrain <-> slide code top 20 scores using USING PERIODIC COMMIT
 start = timeit.default_timer()
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
 vc.nc.commit_list(statements=[
-    "CALL apoc.periodic.iterate('LOAD CSV WITH HEADERS FROM \"file:///top20_scores_agg.tsv\" AS row FIELDTERMINATOR \"\\t\" RETURN row', 'MATCH (body:Site {short_form: \"neuronbridge\"})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)-[:has_source]->(:DataSet {short_form: \"Xu2020NeuronsV1point1\"}) WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: \"VFBc_00101567\"}) MATCH (api:API {short_form: \"jrc_slide_code_api\"})<-[r2:database_cross_reference {accession: row.slidecode_API}]-(s:Individual:Adult) WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: \"VFBc_00101567\"}) MERGE (s)-[r:has_similar_morphology_to_part_of]->(b) ON CREATE SET r.iri = \"http://n2o.neo/custom/has_similar_morphology_to_part_of\", r.short_form = \"has_similar_morphology_to_part_of\", r.type = \"Annotation\", r.neuronbridge_score = [row.score] SET s:neuronbridge, b:neuronbridge', {batchSize: 1000, parallel: true})"
+    """
+    USING PERIODIC COMMIT 1000
+    LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg.tsv' AS row FIELDTERMINATOR '\\t'
+    MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
+    WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    MATCH (api:API {short_form: 'jrc_slide_code_api'})<-[r2:database_cross_reference {accession: row.slidecode_API}]-(s:Individual:Adult)
+    WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    MERGE (s)-[r:has_similar_morphology_to_part_of]->(b)
+    ON CREATE SET 
+        r.iri = 'http://n2o.neo/custom/has_similar_morphology_to_part_of',
+        r.short_form = 'has_similar_morphology_to_part_of',
+        r.type = 'Annotation',
+        r.neuronbridge_score = [toFloat(row.score)]
+    SET 
+        s:neuronbridge, 
+        b:neuronbridge
+    """
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
+
+
+# Start monitoring after executing all commit_list statements
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
 
 # Add any missing unique facets
 start = timeit.default_timer()
@@ -244,54 +338,9 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
-# Monitoring function for running APOC periodic jobs
-def is_apoc_jobs_running():
-    query = """
-    CALL dbms.listQueries() 
-    YIELD query, status 
-    WHERE query CONTAINS 'apoc.periodic.iterate' AND status = 'running' 
-    RETURN COUNT(*) AS running
-    """
-    try:
-        result = vc.nc.commit_list(statements=[query])
-        # Parsing the result based on the expected response structure
-        if result and 'data' in result[0] and result[0]['data']:
-            # Extract the count from the first row
-            running_count = result[0]['data'][0]['row'][0]
-            return running_count > 1
-        return False
-    except Exception as e:
-        print(f"Error while checking APOC jobs: {e}")
-        # Decide whether to treat this as running or not based on your requirements
-        return True  # Assume jobs are running if there's an error
 
-def monitor_apoc_jobs(check_interval=1800, max_wait_time=86400):
-    """
-    Monitor APOC periodic jobs and wait until all running jobs have completed.
-    
-    :param check_interval: Time in seconds between checks (default: 1800 seconds = 30 minutes)
-    :param max_wait_time: Maximum time in seconds to wait before aborting (default: 86400 seconds = 24 hours)
-    """
-    print("Monitoring for running APOC periodic jobs...")
-    start_time = time.time()
-    try:
-        while True:
-            if is_apoc_jobs_running():
-                elapsed = time.time() - start_time
-                if elapsed > max_wait_time:
-                    print("Maximum wait time exceeded. Exiting monitoring.")
-                    break
-                minutes = check_interval // 60
-                print(f"An APOC periodic job is still running. Checking again in {minutes} minutes...")
-                time.sleep(check_interval)
-            else:
-                print("No APOC periodic jobs are running. Exiting monitoring.")
-                break
-    except KeyboardInterrupt:
-        print("Monitoring interrupted by user. Exiting.")
 
 # Start monitoring after executing all commit_list statements
-import time  # Ensure time is imported for time.time()
 start_monitor = timeit.default_timer()
 monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
