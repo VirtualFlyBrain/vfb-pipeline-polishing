@@ -72,6 +72,15 @@ monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
+# Fix for missing Expression Pattern Tags
+start = timeit.default_timer()
+print("Clean BLOCKED images removing anatomical ind and channel...")
+vc.nc.commit_list(statements=[
+    "MATCH (c:Class {short_form:'VFBext_0000010'})<-[:SUBCLASSOF|INSTANCEOF*]-(n) SET n:Expression_pattern;"
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
 # Clean BLOCKED images removing anatomical ind and channel
 start = timeit.default_timer()
 print("Clean BLOCKED images removing anatomical ind and channel...")
