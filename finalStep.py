@@ -57,10 +57,10 @@ start = timeit.default_timer()
 print("Fix RO id edge types...")
 vc.nc.commit_list(statements=[
     "MATCH (n:ObjectProperty) WHERE n.label STARTS WITH 'RO_' SET n.label = n.label_rdfs[0]",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label=\"expresses\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: true})",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label=\"synapsed to\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: true})",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label=\"present in taxon\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: true})",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label=\"is indirect form of\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: true})",
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label=\"expresses\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label=\"synapsed to\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label=\"present in taxon\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label=\"is indirect form of\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
     "MATCH (n) WHERE exists(n.nodeLabel) and n.nodeLabel = ['pub'] SET n:pub"
 ])
 stop = timeit.default_timer()
@@ -94,9 +94,9 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Add has_neuron/region_connectivity labels...")
 vc.nc.commit_list(statements=[
-    "CALL apoc.periodic.iterate('MATCH (a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE EXISTS(r.weight) RETURN a, b', 'SET a:has_neuron_connectivity SET b:has_neuron_connectivity', {batchSize: 1000, parallel: true})",
-    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 1000, parallel: true})",
-    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 1000, parallel: true})"
+    "CALL apoc.periodic.iterate('MATCH (a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE EXISTS(r.weight) RETURN a, b', 'SET a:has_neuron_connectivity SET b:has_neuron_connectivity', {batchSize: 100, parallel: false})",
+    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 100, parallel: false})",
+    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 100, parallel: false})"
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
@@ -188,7 +188,7 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Ensure all xrefs are on separate edges...")
 vc.nc.commit_list(statements=[
-    "CALL apoc.periodic.iterate('MATCH (n)-[r:database_cross_reference]->(s:Site) WHERE SIZE(r.accession) > 1 RETURN n, s, r', 'SET r.accession = [r.accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = TAIL(r.accession)', {batchSize: 1000, parallel: true})"
+    "CALL apoc.periodic.iterate('MATCH (n)-[r:database_cross_reference]->(s:Site) WHERE SIZE(r.accession) > 1 RETURN n, s, r', 'SET r.accession = [r.accession[0]] CREATE (n)-[r1:database_cross_reference]->(s) SET r1 = r SET r1.accession = TAIL(r.accession)', {batchSize: 100, parallel: false})"
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
