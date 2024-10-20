@@ -163,7 +163,7 @@ CALL apoc.periodic.iterate(
         type: \'Annotation\'
     }}
     ',
-    {{batchSize: 1000, iterateList: true}}
+    {{batchSize: 500, iterateList: true}}
 )
 """)
 vc.nc.commit_list(statements)
@@ -204,7 +204,7 @@ print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 start = timeit.default_timer()
 print("Adding ALL SWC <-> SWC NBLAST scores...")
 vc.nc.commit_list(statements=[
-    "USING PERIODIC COMMIT 1000 LOAD CSV WITH HEADERS FROM 'file:///swc_swc.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to { iri: 'http://n2o.neo/custom/has_similar_morphology_to', short_form: 'has_similar_morphology_to', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)], r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END SET s:NBLAST, b:NBLAST"
+    "USING PERIODIC COMMIT 500 LOAD CSV WITH HEADERS FROM 'file:///swc_swc.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to { iri: 'http://n2o.neo/custom/has_similar_morphology_to', short_form: 'has_similar_morphology_to', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)], r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END SET s:NBLAST, b:NBLAST"
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
@@ -213,7 +213,7 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
 vc.nc.commit_list(statements=[
-    "USING PERIODIC COMMIT 1000 LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to_part_of { iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', short_form: 'has_similar_morphology_to_part_of', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)] SET s:NBLASTexp, b:NBLASTexp"
+    "USING PERIODIC COMMIT 500 LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to_part_of { iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', short_form: 'has_similar_morphology_to_part_of', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)] SET s:NBLASTexp, b:NBLASTexp"
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
@@ -223,7 +223,7 @@ start = timeit.default_timer()
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
 vc.nc.commit_list(statements=[
     """
-    USING PERIODIC COMMIT 1000
+    USING PERIODIC COMMIT 500
     LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg.tsv' AS row FIELDTERMINATOR '\\t'
     MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
     WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
