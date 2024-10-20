@@ -11,7 +11,7 @@ def is_apoc_jobs_running():
     query = """
     CALL dbms.listQueries() 
     YIELD query, status 
-    WHERE query CONTAINS 'apoc.periodic.iterate' AND status = 'running' 
+    WHERE status = 'running' AND (query CONTAINS 'apoc.periodic.iterate' OR query CONTAINS 'LOAD CSV')
     RETURN COUNT(*) AS running
     """
     try:
