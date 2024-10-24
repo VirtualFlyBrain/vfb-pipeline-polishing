@@ -147,22 +147,7 @@ synonym_queries = [
 statements = []
 for query in synonym_queries:
     statements.append(
-        "CALL apoc.periodic.iterate("
-        "\"MATCH (primary) WHERE EXISTS(primary." + query['synonym_type'] + ") RETURN primary\"", "\"
-        WITH primary, REDUCE(syns = [], syn IN primary." + query['synonym_type'] + " | syns + syn) AS syns
-        UNWIND syns AS syn
-        MATCH (p:pub {short_form: COALESCE(SPLIT(syn.annotations.database_cross_reference[0], ':')[1], 'Unattributed')})
-        MERGE (primary)-[r:has_reference {typ:'syn', value:[syn.value]}]->(p)
-        ON CREATE SET r += {
-            iri: 'http://purl.org/dc/terms/references',
-            scope: '" + query['scope'] + "',
-            short_form: 'references',
-            typ: 'syn',
-            label: 'has_reference',
-            type: 'Annotation'
-        }
-        "\", {batchSize: 500, iterateList: true})"
-    )
+        "CALL apoc.periodic.iterate(\"MATCH (primary) WHERE EXISTS(primary." + query['synonym_type'] + ") RETURN primary\", \"WITH primary, REDUCE(syns = [], syn IN primary." + query['synonym_type'] + " | syns + syn) AS syns UNWIND syns AS syn MATCH (p:pub {short_form: COALESCE(SPLIT(syn.annotations.database_cross_reference[0], ':')[1], 'Unattributed')}) MERGE (primary)-[r:has_reference {typ:'syn', value:[syn.value]}]->(p) ON CREATE SET r += { iri: 'http://purl.org/dc/terms/references', scope: '" + query['scope'] + "', short_form: 'references', typ: 'syn', label: 'has_reference', type: 'Annotation'}\", {batchSize: 500, iterateList: true})")
 
 vc.nc.commit_list(statements)
 stop = timeit.default_timer()
