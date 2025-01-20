@@ -235,27 +235,28 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
 
-# Break down the complex query into steps
+# Break the operation into smaller chunks
 statements = [
     """
-    USING PERIODIC COMMIT 100
-    LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg.tsv' AS row FIELDTERMINATOR '\\t'
-    MATCH (body:Site {short_form: 'neuronbridge'})
-    MATCH (b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
-    WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    AND (b)-[:database_cross_reference {accession: row.neuprint_xref}]->(body)
-    WITH row, b, body
-    MATCH (api:API {short_form: 'jrc_slide_code_api'})
-    MATCH (s:Individual:Adult)
-    WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    AND (s)-[:database_cross_reference {accession: row.slidecode_API}]->(api)
-    MERGE (s)-[r:has_similar_morphology_to_part_of]->(b)
-    ON CREATE SET 
-        r.iri = 'http://n2o.neo/custom/has_similar_morphology_to_part_of',
-        r.short_form = 'has_similar_morphology_to_part_of',
-        r.type = 'Annotation',
-        r.neuronbridge_score = [toFloat(row.score)]
-    SET s:neuronbridge, b:neuronbridge
+    // First create a temporary index for the matches we need
+    CALL apoc.periodic.iterate(
+        "LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg.tsv' AS row FIELDTERMINATOR '\t' RETURN row",
+        "WITH row 
+         MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)
+         WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+         AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
+         WITH b, row
+         MATCH (api:API {short_form: 'jrc_slide_code_api'})<-[r2:database_cross_reference {accession: row.slidecode_API}]-(s:Individual:Adult)
+         WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+         MERGE (s)-[r:has_similar_morphology_to_part_of]->(b)
+         ON CREATE SET 
+             r.iri = 'http://n2o.neo/custom/has_similar_morphology_to_part_of',
+             r.short_form = 'has_similar_morphology_to_part_of',
+             r.type = 'Annotation',
+             r.neuronbridge_score = [toFloat(row.score)]
+         SET s:neuronbridge, b:neuronbridge",
+        {batchSize: 50, parallel: false}
+    )
     """
 ]
 
@@ -266,6 +267,7 @@ for statement in statements:
     while retries < max_retries:
         try:
             vc.nc.commit_list([statement])
+            print(f"Successfully executed batch")
             break
         except Exception as e:
             retries += 1
@@ -273,7 +275,7 @@ for statement in statements:
                 print(f"Failed to execute statement after {max_retries} attempts: {str(e)}")
             else:
                 print(f"Retry {retries} of {max_retries}...")
-                time.sleep(5)  # Wait 5 seconds before retrying
+                time.sleep(30)  # Longer wait between retries
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
