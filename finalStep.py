@@ -234,25 +234,47 @@ print('Run time: ', stop - start)
 # Add Neuronbridge Hemibrain <-> slide code top 20 scores using USING PERIODIC COMMIT
 start = timeit.default_timer()
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
-vc.nc.commit_list(statements=[
+
+# Break down the complex query into steps
+statements = [
     """
-    USING PERIODIC COMMIT 500
+    USING PERIODIC COMMIT 100
     LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg.tsv' AS row FIELDTERMINATOR '\\t'
-    MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
+    MATCH (body:Site {short_form: 'neuronbridge'})
+    MATCH (b:Individual:Adult)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
     WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    MATCH (api:API {short_form: 'jrc_slide_code_api'})<-[r2:database_cross_reference {accession: row.slidecode_API}]-(s:Individual:Adult)
+    AND (b)-[:database_cross_reference {accession: row.neuprint_xref}]->(body)
+    WITH row, b, body
+    MATCH (api:API {short_form: 'jrc_slide_code_api'})
+    MATCH (s:Individual:Adult)
     WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    AND (s)-[:database_cross_reference {accession: row.slidecode_API}]->(api)
     MERGE (s)-[r:has_similar_morphology_to_part_of]->(b)
     ON CREATE SET 
         r.iri = 'http://n2o.neo/custom/has_similar_morphology_to_part_of',
         r.short_form = 'has_similar_morphology_to_part_of',
         r.type = 'Annotation',
         r.neuronbridge_score = [toFloat(row.score)]
-    SET 
-        s:neuronbridge, 
-        b:neuronbridge
+    SET s:neuronbridge, b:neuronbridge
     """
-])
+]
+
+# Execute statements with error handling and retry logic
+max_retries = 3
+for statement in statements:
+    retries = 0
+    while retries < max_retries:
+        try:
+            vc.nc.commit_list([statement])
+            break
+        except Exception as e:
+            retries += 1
+            if retries == max_retries:
+                print(f"Failed to execute statement after {max_retries} attempts: {str(e)}")
+            else:
+                print(f"Retry {retries} of {max_retries}...")
+                time.sleep(5)  # Wait 5 seconds before retrying
+
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
