@@ -203,22 +203,81 @@ print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 # Adding ALL SWC <-> SWC NBLAST scores
 start = timeit.default_timer()
 print("Adding ALL SWC <-> SWC NBLAST scores...")
-
 # Execute each LOAD CSV statement separately to avoid PERIODIC COMMIT conflicts
 vc.nc.commit_list([
-    "USING PERIODIC COMMIT 500 LOAD CSV WITH HEADERS FROM 'file:///swc_swc.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to { iri: 'http://n2o.neo/custom/has_similar_morphology_to', short_form: 'has_similar_morphology_to', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)], r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END SET s:NBLAST, b:NBLAST"
+    """
+    USING PERIODIC COMMIT 500 
+    LOAD CSV WITH HEADERS FROM 'file:///swc_swc.tsv' AS row 
+    FIELDTERMINATOR '\\t' 
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+    WITH s, b, row, r
+    CALL apoc.do.when(r IS NULL,
+        'MERGE (s)-[new:has_similar_morphology_to { 
+            iri: "http://n2o.neo/custom/has_similar_morphology_to", 
+            short_form: "has_similar_morphology_to", 
+            type: "Annotation" 
+        }]->(b) 
+        SET new.NBLAST_score = [toFloat(score)],
+            new.mirrored = mirrored
+        RETURN new',
+        'SET r.NBLAST_score = [toFloat(score)]
+         RETURN r',
+        {s:s, b:b, score: row.score, 
+         mirrored: CASE WHEN row.mirrored = 'y' THEN true ELSE false END}) YIELD value
+    SET s:NBLAST, b:NBLAST
+    """
 ])
 time.sleep(1)  # Brief pause between operations
-
 vc.nc.commit_list([
-    "USING PERIODIC COMMIT 500 LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to { iri: 'http://n2o.neo/custom/has_similar_morphology_to', short_form: 'has_similar_morphology_to', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)], r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END SET s:NBLAST, b:NBLAST"
+    """
+    USING PERIODIC COMMIT 500 
+    LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row 
+    FIELDTERMINATOR '\\t' 
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+    WITH s, b, row, r
+    CALL apoc.do.when(r IS NULL,
+        'MERGE (s)-[new:has_similar_morphology_to { 
+            iri: "http://n2o.neo/custom/has_similar_morphology_to", 
+            short_form: "has_similar_morphology_to", 
+            type: "Annotation" 
+        }]->(b) 
+        SET new.NBLAST_score = [toFloat(score)],
+            new.mirrored = mirrored
+        RETURN new',
+        'SET r.NBLAST_score = [toFloat(score)]
+         RETURN r',
+        {s:s, b:b, score: row.score, 
+         mirrored: CASE WHEN row.mirrored = 'y' THEN true ELSE false END}) YIELD value
+    SET s:NBLAST, b:NBLAST
+    """
 ])
 time.sleep(1)
-
 vc.nc.commit_list([
-    "USING PERIODIC COMMIT 500 LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to { iri: 'http://n2o.neo/custom/has_similar_morphology_to', short_form: 'has_similar_morphology_to', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)], r.mirrored = CASE WHEN row.mirrored = 'y' THEN true ELSE false END SET s:NBLAST, b:NBLAST"
+    """
+    USING PERIODIC COMMIT 500 
+    LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row 
+    FIELDTERMINATOR '\\t' 
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+    WITH s, b, row, r
+    CALL apoc.do.when(r IS NULL,
+        'MERGE (s)-[new:has_similar_morphology_to { 
+            iri: "http://n2o.neo/custom/has_similar_morphology_to", 
+            short_form: "has_similar_morphology_to", 
+            type: "Annotation" 
+        }]->(b) 
+        SET new.NBLAST_score = [toFloat(score)],
+            new.mirrored = mirrored
+        RETURN new',
+        'SET r.NBLAST_score = [toFloat(score)]
+         RETURN r',
+        {s:s, b:b, score: row.score, 
+         mirrored: CASE WHEN row.mirrored = 'y' THEN true ELSE false END}) YIELD value
+    SET s:NBLAST, b:NBLAST
+    """
 ])
-
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
