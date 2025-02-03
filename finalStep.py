@@ -96,18 +96,33 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Add has_neuron/region_connectivity labels...")
 vc.nc.commit_list(statements=[
-    "CALL apoc.periodic.iterate('MATCH (a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE EXISTS(r.weight) RETURN a, b', 'SET a:has_neuron_connectivity SET b:has_neuron_connectivity', {batchSize: 100, parallel: false})",
-    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 100, parallel: false})",
-    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 100, parallel: false})"
+    "CALL apoc.periodic.iterate('MATCH (a:Neuron)-[r:synapsed_to]->(b:Neuron) WHERE EXISTS(r.weight) RETURN a, b', 'SET a:has_neuron_connectivity SET b:has_neuron_connectivity', {batchSize: 100, parallel: false})"
 ])
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
-
-# Start monitoring after executing all commit_list statements
+# Start monitoring after executing commit_list statement
 start_monitor = timeit.default_timer()
 monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_presynaptic_terminals_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 100, parallel: false})"
+])
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (n:Neuron)-[r:has_postsynaptic_terminal_in]->(c:Synaptic_neuropil) RETURN n', 'SET n:has_region_connectivity', {batchSize: 100, parallel: false})"
+])
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
+
 
 # Clean NBLAST
 start = timeit.default_timer()
@@ -228,7 +243,11 @@ vc.nc.commit_list([
     SET s:NBLAST, b:NBLAST
     """
 ])
-time.sleep(1)  # Brief pause between operations
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 vc.nc.commit_list([
     """
     USING PERIODIC COMMIT 500 
@@ -253,7 +272,11 @@ vc.nc.commit_list([
     SET s:NBLAST, b:NBLAST
     """
 ])
-time.sleep(1)
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 vc.nc.commit_list([
     """
     USING PERIODIC COMMIT 500 
@@ -278,6 +301,11 @@ vc.nc.commit_list([
     SET s:NBLAST, b:NBLAST
     """
 ])
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
@@ -287,6 +315,11 @@ print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
 vc.nc.commit_list(statements=[
     "USING PERIODIC COMMIT 500 LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row FIELDTERMINATOR '\\t' MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) MERGE (s)-[r:has_similar_morphology_to_part_of { iri: 'http://n2o.neo/custom/has_similar_morphology_to_part_of', short_form: 'has_similar_morphology_to_part_of', type: 'Annotation' }]->(b) SET r.NBLAST_score = [toFloat(row.score)] SET s:NBLASTexp, b:NBLASTexp"
 ])
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
