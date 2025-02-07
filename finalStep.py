@@ -225,22 +225,23 @@ vc.nc.commit_list([
     LOAD CSV WITH HEADERS FROM 'file:///swc_swc.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
-    WITH s, b, row, r
-    CALL apoc.do.when(r IS NULL,
-        'MERGE (s)-[new:has_similar_morphology_to { 
-            iri: "http://n2o.neo/custom/has_similar_morphology_to", 
-            short_form: "has_similar_morphology_to", 
-            type: "Annotation" 
+    CASE WHEN exists((s)-[:has_similar_morphology_to]-(b)) 
+    THEN
+        MATCH (s)-[r:has_similar_morphology_to]-(b)
+        WITH s, b, row, r
+        SET r.NBLAST_score = [toFloat(row.score)]
+        SET s:NBLAST, b:NBLAST
+        RETURN r
+    ELSE
+        MERGE (s)-[r:has_similar_morphology_to { 
+                iri: "http://n2o.neo/custom/has_similar_morphology_to", 
+                short_form: "has_similar_morphology_to", 
+                type: "Annotation" 
         }]->(b) 
-        SET new.NBLAST_score = [toFloat(score)],
-            new.mirrored = mirrored
-        RETURN new',
-        'SET r.NBLAST_score = [toFloat(score)]
-         RETURN r',
-        {s:s, b:b, score: row.score, 
-         mirrored: CASE WHEN row.mirrored = 'y' THEN true ELSE false END}) YIELD value
-    SET s:NBLAST, b:NBLAST
+        SET r.NBLAST_score = [toFloat(row.score)],
+            s:NBLAST, b:NBLAST
+        RETURN r
+    END
     """
 ])
 # Start monitoring after executing commit_list statement
@@ -254,22 +255,23 @@ vc.nc.commit_list([
     LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
-    WITH s, b, row, r
-    CALL apoc.do.when(r IS NULL,
-        'MERGE (s)-[new:has_similar_morphology_to { 
+    CASE WHEN exists((s)-[:has_similar_morphology_to]-(b)) 
+    THEN
+        MATCH (s)-[r:has_similar_morphology_to]-(b)
+        WITH s, b, row, r
+        SET r.NBLAST_score = [toFloat(row.score)]
+        SET s:NBLAST, b:NBLAST
+        RETURN r
+    ELSE
+        MERGE (s)-[r:has_similar_morphology_to { 
             iri: "http://n2o.neo/custom/has_similar_morphology_to", 
             short_form: "has_similar_morphology_to", 
             type: "Annotation" 
         }]->(b) 
-        SET new.NBLAST_score = [toFloat(score)],
-            new.mirrored = mirrored
-        RETURN new',
-        'SET r.NBLAST_score = [toFloat(score)]
-         RETURN r',
-        {s:s, b:b, score: row.score, 
-         mirrored: CASE WHEN row.mirrored = 'y' THEN true ELSE false END}) YIELD value
-    SET s:NBLAST, b:NBLAST
+        SET r.NBLAST_score = [toFloat(row.score)],
+            s:NBLAST, b:NBLAST
+        RETURN r
+    END
     """
 ])
 # Start monitoring after executing commit_list statement
@@ -283,22 +285,23 @@ vc.nc.commit_list([
     LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
-    WITH s, b, row, r
-    CALL apoc.do.when(r IS NULL,
-        'MERGE (s)-[new:has_similar_morphology_to { 
+    CASE WHEN exists((s)-[:has_similar_morphology_to]-(b)) 
+    THEN
+        MATCH (s)-[r:has_similar_morphology_to]-(b)
+        WITH s, b, row, r
+        SET r.NBLAST_score = [toFloat(row.score)]
+        SET s:NBLAST, b:NBLAST
+        RETURN r
+    ELSE
+        MERGE (s)-[r:has_similar_morphology_to { 
             iri: "http://n2o.neo/custom/has_similar_morphology_to", 
             short_form: "has_similar_morphology_to", 
             type: "Annotation" 
         }]->(b) 
-        SET new.NBLAST_score = [toFloat(score)],
-            new.mirrored = mirrored
-        RETURN new',
-        'SET r.NBLAST_score = [toFloat(score)]
-         RETURN r',
-        {s:s, b:b, score: row.score, 
-         mirrored: CASE WHEN row.mirrored = 'y' THEN true ELSE false END}) YIELD value
-    SET s:NBLAST, b:NBLAST
+        SET r.NBLAST_score = [toFloat(row.score)],
+            s:NBLAST, b:NBLAST
+        RETURN r
+    END
     """
 ])
 # Start monitoring after executing commit_list statement
