@@ -27,7 +27,7 @@ def is_apoc_jobs_running():
         # Decide whether to treat this as running or not based on your requirements
         return True  # Assume jobs are running if there's an error
 
-def monitor_apoc_jobs(check_interval=1800, max_wait_time=86400):
+def monitor_apoc_jobs(check_interval=1800, max_wait_time=864000):
     """
     Monitor APOC periodic jobs and wait until all running jobs have completed.
     
