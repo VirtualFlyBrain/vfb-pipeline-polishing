@@ -338,24 +338,21 @@ vc.nc.commit_list([
     MATCH (s:Individual {short_form: row.`n.short_form_x`}), (b:Individual {short_form: row.`n.short_form_y`})
     WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
     AND (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
-    CASE WHEN exists((s)-[:has_similar_morphology_to_part_of]-(b))
-    THEN
-        MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
-        WITH s, b, row, r
-        SET r.neuronbridge_score = [toFloat(row.score)]
-        SET s:neuronbridge, b:neuronbridge
-        RETURN r
-    ELSE
+    AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point2point1'})
+    WITH s, b, toFloat(row.score) as score
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
+    WITH s, b, r, score
+    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
         MERGE (s)-[r:has_similar_morphology_to_part_of {
             iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
             short_form: "has_similar_morphology_to_part_of",
             type: "Annotation"
         }]->(b)
-        SET r.neuronbridge_score = [toFloat(row.score)],
-            s:neuronbridge, b:neuronbridge
-        RETURN r
-    END
+    )
+    WITH s, b, r, score
+    SET r.neuronbridge_score = [score]
+    SET s:neuronbridge, b:neuronbridge
+    RETURN count(*) as relationships_processed;
     """
 ])
 
