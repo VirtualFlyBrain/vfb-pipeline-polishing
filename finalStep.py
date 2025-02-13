@@ -330,47 +330,34 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
 
-# Break the operation into smaller chunks
-statements = [
+vc.nc.commit_list([
     """
-    // First create a temporary index for the matches we need
-    CALL apoc.periodic.iterate(
-        "LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg.tsv' AS row FIELDTERMINATOR '\t' RETURN row",
-        "WITH row 
-         MATCH (body:Site {short_form: 'neuronbridge'})<-[r1:database_cross_reference {accession: row.neuprint_xref}]-(b:Individual:Adult)
-         WHERE (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-         AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
-         WITH b, row
-         MATCH (api:API {short_form: 'jrc_slide_code_api'})<-[r2:database_cross_reference {accession: row.slidecode_API}]-(s:Individual:Adult)
-         WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-         MERGE (s)-[r:has_similar_morphology_to_part_of]->(b)
-         ON CREATE SET 
-             r.iri = 'http://n2o.neo/custom/has_similar_morphology_to_part_of',
-             r.short_form = 'has_similar_morphology_to_part_of',
-             r.type = 'Annotation',
-             r.neuronbridge_score = [toFloat(row.score)]
-         SET s:neuronbridge, b:neuronbridge",
-        {batchSize: 50, parallel: false}
-    )
+    USING PERIODIC COMMIT 500
+    LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg_short_forms.tsv' AS row 
+    FIELDTERMINATOR '\\t'
+    MATCH (s:Individual {short_form: row.n.short_form_y}), (b:Individual {short_form: row.n.short_form_x})
+    WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    AND (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
+    AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
+    CASE WHEN exists((s)-[:has_similar_morphology_to_part_of]-(b))
+    THEN
+        MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
+        WITH s, b, row, r
+        SET r.neuronbridge_score = [toFloat(row.score)]
+        SET s:neuronbridge, b:neuronbridge
+        RETURN r
+    ELSE
+        MERGE (s)-[r:has_similar_morphology_to_part_of {
+            iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
+            short_form: "has_similar_morphology_to_part_of",
+            type: "Annotation"
+        }]->(b)
+        SET r.neuronbridge_score = [toFloat(row.score)],
+            s:neuronbridge, b:neuronbridge
+        RETURN r
+    END
     """
-]
-
-# Execute statements with error handling and retry logic
-max_retries = 3
-for statement in statements:
-    retries = 0
-    while retries < max_retries:
-        try:
-            vc.nc.commit_list([statement])
-            print(f"Successfully executed batch")
-            break
-        except Exception as e:
-            retries += 1
-            if retries == max_retries:
-                print(f"Failed to execute statement after {max_retries} attempts: {str(e)}")
-            else:
-                print(f"Retry {retries} of {max_retries}...")
-                time.sleep(30)  # Longer wait between retries
+])
 
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
