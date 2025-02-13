@@ -335,7 +335,7 @@ vc.nc.commit_list([
     USING PERIODIC COMMIT 500
     LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg_short_forms.tsv' AS row 
     FIELDTERMINATOR '\\t'
-    MATCH (s:Individual {short_form: row.n.short_form_y}), (b:Individual {short_form: row.n.short_form_x})
+    MATCH (s:Individual {short_form: row.`n.short_form_x`}), (b:Individual {short_form: row.`n.short_form_y`})
     WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
     AND (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
     AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point1'})
