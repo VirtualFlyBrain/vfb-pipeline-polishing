@@ -221,7 +221,6 @@ print("Adding ALL SWC <-> SWC NBLAST scores...")
 # Execute each LOAD CSV statement separately to avoid PERIODIC COMMIT conflicts
 vc.nc.commit_list([
     """
-    USING PERIODIC COMMIT 500 
     LOAD CSV WITH HEADERS FROM 'file:///swc_swc.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
@@ -250,7 +249,6 @@ print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
 vc.nc.commit_list([
     """
-    USING PERIODIC COMMIT 500 
     LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
@@ -279,7 +277,6 @@ print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
 vc.nc.commit_list([
     """
-    USING PERIODIC COMMIT 500 
     LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
@@ -312,8 +309,7 @@ print('Run time: ', stop - start)
 start = timeit.default_timer()
 print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
 vc.nc.commit_list([
-    """
-    USING PERIODIC COMMIT 500 
+    """ 
     LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row 
     FIELDTERMINATOR '\\t' 
     MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
@@ -348,7 +344,6 @@ print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
 
 vc.nc.commit_list([
     """
-    USING PERIODIC COMMIT 500
     LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg_short_forms.tsv' AS row 
     FIELDTERMINATOR '\\t'
     MATCH (s:Individual {short_form: row.`n.short_form_x`}), (b:Individual {short_form: row.`n.short_form_y`})
