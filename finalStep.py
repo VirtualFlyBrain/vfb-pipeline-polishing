@@ -209,6 +209,66 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# ----- START OLD CODE TOBE REMOVED -----
+
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+vc.nc.commit_list([
+    """
+    LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row 
+    FIELDTERMINATOR '\\t' 
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+    WITH s, b, row.score as score
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+    WITH s, b, r, score
+    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+        MERGE (s)-[r:has_similar_morphology_to {
+            iri: "http://n2o.neo/custom/has_similar_morphology_to",
+            short_form: "has_similar_morphology_to",
+            type: "Annotation"
+        }]->(b)
+    )
+    WITH s, b, r, score
+    SET r.NBLAST_score = [score]
+    SET s:NBLAST, b:NBLAST
+    RETURN count(*) as relationships_processed
+    """
+])
+
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+vc.nc.commit_list([
+    """
+    LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row 
+    FIELDTERMINATOR '\\t' 
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+    WITH s, b, row.score as score
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+    WITH s, b, r, score
+    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+        MERGE (s)-[r:has_similar_morphology_to {
+            iri: "http://n2o.neo/custom/has_similar_morphology_to",
+            short_form: "has_similar_morphology_to",
+            type: "Annotation"
+        }]->(b)
+    )
+    WITH s, b, r, score
+    SET r.NBLAST_score = [score]
+    SET s:NBLAST, b:NBLAST
+    RETURN count(*) as relationships_processed
+    """
+])
+
+# --- END OLD CODE TOBE REMOVED ---
+
 # Start monitoring after executing all commit_list statements
 start_monitor = timeit.default_timer()
 monitor_apoc_jobs()
