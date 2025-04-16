@@ -480,6 +480,60 @@ stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
 
+# Create a list of Cypher statements for lineage_0 to lineage_30
+start = timeit.default_timer()
+print("Adding numerical lineage labels...")
+lineage_statements = []
+for i in range(31):  # 0 to 30 inclusive
+    lineage_label = f"lineage_{i}"
+    lineage_statements.append(
+        f"MATCH (n:{lineage_label}) WHERE EXISTS(n.uniqueFacets) AND NOT '{lineage_label}' IN n.uniqueFacets "
+        f"SET n.uniqueFacets = n.uniqueFacets + ['{lineage_label}']"
+    )
+    lineage_statements.append(
+        f"MATCH (n:{lineage_label}) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets = ['{lineage_label}']"
+    )
+
+# Execute the lineage label statements
+vc.nc.commit_list(statements=lineage_statements)
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
+# Add official named lineage labels to uniqueFacets
+start = timeit.default_timer()
+print("Adding official named lineage labels...")
+
+# First, query all class labels ending with " lineage neuron"
+query = """
+MATCH (n:Class) WHERE n.label ENDS WITH ' lineage neuron' 
+RETURN DISTINCT n.label as label
+"""
+named_lineages_result = vc.nc.commit_list(statements=[query])
+
+# Transform results and create update statements
+named_lineage_statements = []
+if named_lineages_result and 'data' in named_lineages_result[0] and named_lineages_result[0]['data']:
+    for record in named_lineages_result[0]['data']:
+        # Extract the lineage name (remove " lineage neuron" suffix)
+        lineage_name = record['row'][0].replace(' lineage neuron', '')
+        # Create the new format: lineage_X
+        lineage_label = f"lineage_{lineage_name}"
+        
+        # Create statements to update uniqueFacets, same as with numerical lineages
+        named_lineage_statements.append(
+            f"MATCH (n:{lineage_label}) WHERE EXISTS(n.uniqueFacets) AND NOT '{lineage_label}' IN n.uniqueFacets "
+            f"SET n.uniqueFacets = n.uniqueFacets + ['{lineage_label}']"
+        )
+        named_lineage_statements.append(
+            f"MATCH (n:{lineage_label}) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets = ['{lineage_label}']"
+        )
+
+# Execute the named lineage label statements
+if named_lineage_statements:
+    vc.nc.commit_list(statements=named_lineage_statements)
+    
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
 
 # Start monitoring after executing all commit_list statements
 start_monitor = timeit.default_timer()
