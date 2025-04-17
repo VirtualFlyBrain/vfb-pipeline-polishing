@@ -351,9 +351,6 @@ vc.nc.commit_list([
     LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg_short_forms.tsv' AS row 
     FIELDTERMINATOR '\\t'
     MATCH (s:Individual {short_form: row.`n.short_form_x`}), (b:Individual {short_form: row.`n.short_form_y`})
-    WHERE (s)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    AND (b)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template {short_form: 'VFBc_00101567'})
-    AND (b)-[:has_source]->(:DataSet {short_form: 'Xu2020NeuronsV1point2point1'})
     WITH s, b, row.score as score
     OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
     WITH s, b, r, score
