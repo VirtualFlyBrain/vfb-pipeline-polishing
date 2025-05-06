@@ -324,7 +324,8 @@ vc.nc.commit_list([
         MERGE (s)-[r:has_similar_morphology_to_part_of {
             iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
             short_form: "has_similar_morphology_to_part_of",
-            type: "Annotation"
+            type: "Annotation",
+            NBLAST_score: [score]
         }]->(b)
     )
     WITH s, b, r, score
@@ -358,7 +359,8 @@ vc.nc.commit_list([
         MERGE (s)-[r:has_similar_morphology_to_part_of {
             iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
             short_form: "has_similar_morphology_to_part_of",
-            type: "Annotation"
+            type: "Annotation",
+            neuronbridge_score: [score]
         }]->(b)
     )
     WITH s, b, r, score
