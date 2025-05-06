@@ -61,7 +61,7 @@ vc.nc.commit_list(statements=[
     "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label=\"synapsed to\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
     "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label=\"present in taxon\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
     "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label=\"is indirect form of\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
-    "MATCH (n) WHERE exists(n.nodeLabel) and n.nodeLabel = ['pub'] SET n:pub",
+    "MATCH (n) WHERE exists(n.nodeLabel) and n.nodeLabel = ['pub'] and NOT n:pub SET n:pub",
     "MERGE (p:pub {short_form:'Unattributed'}) ON CREATE SET p += {iri: 'http://flybase.org/reports/Unattributed', uniqueFacets: ['pub']} SET p:Entity SET p:Individual",
     "MATCH (n) WHERE NOT EXISTS(n.description) AND EXISTS(n.definition) WITH n, apoc.convert.fromJsonMap(n.definition[0]) AS def WHERE EXISTS(def.value) SET n.description = [def.value]"
 ])
