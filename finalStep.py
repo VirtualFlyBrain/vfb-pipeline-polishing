@@ -516,13 +516,13 @@ if named_lineages_result and 'data' in named_lineages_result[0] and named_lineag
         # Create the new format: lineage_X
         lineage_label = f"lineage_{lineage_name}"
         
-        # Create statements to update uniqueFacets, same as with numerical lineages
+        # Create statements to update uniqueFacets, using backticks to escape special characters
         named_lineage_statements.append(
-            f"MATCH (n:{lineage_label}) WHERE EXISTS(n.uniqueFacets) AND NOT '{lineage_label}' IN n.uniqueFacets "
+            f"MATCH (n:`{lineage_label}`) WHERE EXISTS(n.uniqueFacets) AND NOT '{lineage_label}' IN n.uniqueFacets "
             f"SET n.uniqueFacets = n.uniqueFacets + ['{lineage_label}']"
         )
         named_lineage_statements.append(
-            f"MATCH (n:{lineage_label}) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets = ['{lineage_label}']"
+            f"MATCH (n:`{lineage_label}`) WHERE NOT EXISTS(n.uniqueFacets) SET n.uniqueFacets = ['{lineage_label}']"
         )
 
 # Execute the named lineage label statements
