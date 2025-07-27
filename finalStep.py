@@ -55,24 +55,57 @@ def monitor_apoc_jobs(check_interval=1800, max_wait_time=864000):
 # Fix RO id edge types
 start = timeit.default_timer()
 print("Fix RO id edge types...")
-vc.nc.commit_list(statements=[
-    "MATCH (n:ObjectProperty) WHERE n.label STARTS WITH 'RO_' SET n.label = n.label_rdfs[0]",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label=\"expresses\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label=\"synapsed to\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label=\"present in taxon\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
-    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label=\"is indirect form of\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})",
-    "MATCH (n) WHERE exists(n.nodeLabel) and n.nodeLabel = ['pub'] and NOT n:pub SET n:pub",
-    "MERGE (p:pub {short_form:'Unattributed'}) ON CREATE SET p += {iri: 'http://flybase.org/reports/Unattributed', uniqueFacets: ['pub']} SET p:Entity SET p:Individual",
-    "MATCH (n) WHERE NOT EXISTS(n.description) AND EXISTS(n.definition) WITH n, apoc.convert.fromJsonMap(n.definition[0]) AS def WHERE EXISTS(def.value) SET n.description = [def.value]"
-])
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
 
-# Start monitoring after executing all commit_list statements
+# First, update ObjectProperty labels
+vc.nc.commit_list(statements=[
+    "MATCH (n:ObjectProperty) WHERE n.label STARTS WITH 'RO_' SET n.label = n.label_rdfs[0]"
+])
+
+# Process RO_0002292 (expresses) relationships
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label=\"expresses\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
+])
 start_monitor = timeit.default_timer()
 monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+# Process RO_0002120 (synapsed_to) relationships
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002120]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:synapsed_to]-(b) SET r2 += r1 SET r2.label=\"synapsed to\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
+])
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+# Process RO_0002175 (present_in_taxon) relationships
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002175]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:present_in_taxon]-(b) SET r2 += r1 SET r2.label=\"present in taxon\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
+])
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+# Process RO_0002579 (is_indirect_form_of) relationships
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002579]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:is_indirect_form_of]-(b) SET r2 += r1 SET r2.label=\"is indirect form of\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
+])
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+# Final cleanup statements
+vc.nc.commit_list(statements=[
+    "MATCH (n) WHERE exists(n.nodeLabel) and n.nodeLabel = ['pub'] and NOT n:pub SET n:pub",
+    "MERGE (p:pub {short_form:'Unattributed'}) ON CREATE SET p += {iri: 'http://flybase.org/reports/Unattributed', uniqueFacets: ['pub']} SET p:Entity SET p:Individual",
+    "MATCH (n) WHERE NOT EXISTS(n.description) AND EXISTS(n.definition) WITH n, apoc.convert.fromJsonMap(n.definition[0]) AS def WHERE EXISTS(def.value) SET n.description = [def.value]"
+])
+
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
 
 # Fix for missing Expression Pattern Tags
 start = timeit.default_timer()
