@@ -262,7 +262,8 @@ vc.nc.commit_list([
         MERGE (s)-[r:has_similar_morphology_to {
             iri: "http://n2o.neo/custom/has_similar_morphology_to",
             short_form: "has_similar_morphology_to",
-            type: "Annotation"
+            type: "Annotation",
+            NBLAST_score: [score]
         }]->(b)
     )
     WITH s, b, r, score
@@ -290,7 +291,8 @@ vc.nc.commit_list([
         MERGE (s)-[r:has_similar_morphology_to {
             iri: "http://n2o.neo/custom/has_similar_morphology_to",
             short_form: "has_similar_morphology_to",
-            type: "Annotation"
+            type: "Annotation",
+            NBLAST_score: [score]
         }]->(b)
     )
     WITH s, b, r, score
@@ -324,7 +326,8 @@ vc.nc.commit_list([
         MERGE (s)-[r:has_similar_morphology_to {
             iri: "http://n2o.neo/custom/has_similar_morphology_to",
             short_form: "has_similar_morphology_to",
-            type: "Annotation"
+            type: "Annotation",
+            NBLAST_score: [score]
         }]->(b)
     )
     WITH s, b, r, score
@@ -368,7 +371,8 @@ for swc_file in swc_files:
             MERGE (s)-[r:has_similar_morphology_to {{
                 iri: "http://n2o.neo/custom/has_similar_morphology_to",
                 short_form: "has_similar_morphology_to",
-                type: "Annotation"
+                type: "Annotation",
+                NBLAST_score: [score]
             }}]->(b)
         )
         WITH s, b, r, score
