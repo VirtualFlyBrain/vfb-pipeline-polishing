@@ -342,6 +342,54 @@ print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Process additional SWC <-> SWC NBLAST score files
+import glob
+start = timeit.default_timer()
+print("Processing additional SWC <-> SWC NBLAST score files...")
+
+# Find all files matching swc_swc_*.tsv pattern
+swc_files = glob.glob('swc_swc_*.tsv')
+print(f"Found {len(swc_files)} additional SWC files to process: {swc_files}")
+
+for swc_file in swc_files:
+    file_start = timeit.default_timer()
+    print(f"Processing {swc_file}...")
+    
+    # Execute LOAD CSV statement for each file
+    vc.nc.commit_list([
+        f"""
+        LOAD CSV WITH HEADERS FROM 'file:///{swc_file}' AS row 
+        FIELDTERMINATOR '\\t' 
+        MATCH (s:Individual {{short_form: row.query}}), (b:Individual {{short_form: row.target}}) 
+        WITH s, b, row.score as score
+        OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+        WITH s, b, r, score
+        FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+            MERGE (s)-[r:has_similar_morphology_to {{
+                iri: "http://n2o.neo/custom/has_similar_morphology_to",
+                short_form: "has_similar_morphology_to",
+                type: "Annotation"
+            }}]->(b)
+        )
+        WITH s, b, r, score
+        SET r.NBLAST_score = [score]
+        SET s:NBLAST, b:NBLAST
+        RETURN count(*) as relationships_processed
+        """
+    ])
+    
+    # Monitor APOC jobs for this file
+    start_monitor = timeit.default_timer()
+    monitor_apoc_jobs()
+    stop_monitor = timeit.default_timer()
+    print(f'Monitoring Run time for {swc_file}: ', stop_monitor - start_monitor, 'seconds')
+    
+    file_stop = timeit.default_timer()
+    print(f'Processing time for {swc_file}: ', file_stop - file_start, 'seconds')
+
+stop = timeit.default_timer()
+print(f'Total time for additional SWC files: ', stop - start, 'seconds')
+
 # Loading SPLITS <-> SWC NBLAST scores from CSV
 start = timeit.default_timer()
 print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
