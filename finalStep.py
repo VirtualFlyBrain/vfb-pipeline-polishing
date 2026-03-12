@@ -183,7 +183,64 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Create missing pub nodes for synonym references (e.g. DOI-based refs not imported via FlyBase).
+# Without this, MATCH (p:pub ...) in the synonym expansion silently drops any synonym whose
+# database_cross_reference points to a pub node that doesn't yet exist in the graph.
+#
+# DOI pub nodes use short_form with ':' '.' '/' all replaced by '_', e.g.:
+#   "doi:10.1101/2025.10.09.680999"  →  short_form: "doi_10_1101_2025_10_09_680999"
+#   iri: "https://doi.org/10.1101/2025.10.09.680999"
+#   DOI: ["10.1101/2025.10.09.680999"]
+# FlyBase pub nodes use the ID after ':' as short_form, e.g.:
+#   "FlyBase:FBrf0260535"  →  short_form: "FBrf0260535"
+start = timeit.default_timer()
+print("Creating missing pub nodes for synonym references...")
+synonym_types_for_pubs = ["has_exact_synonym", "has_broad_synonym", "has_narrow_synonym", "has_related_synonym"]
+create_pub_statements = []
+for syn_type in synonym_types_for_pubs:
+    create_pub_statements.append(
+        "CALL apoc.periodic.iterate("
+        "\"MATCH (primary) WHERE EXISTS(primary." + syn_type + ") "
+        "UNWIND primary." + syn_type + " AS syn_str "
+        "WITH apoc.convert.fromJsonMap(syn_str) AS syn "
+        "WHERE EXISTS(syn.annotations.database_cross_reference) "
+        "WITH syn.annotations.database_cross_reference[0] AS ref "
+        "WHERE SIZE(SPLIT(ref, ':')) >= 2 "
+        "WITH ref, "
+        "SPLIT(ref, ':')[0] AS prefix, "
+        "SPLIT(ref, ':')[1] AS raw_id "
+        "WITH ref, prefix, raw_id, "
+        "CASE WHEN prefix = 'doi' "
+        "THEN 'doi_' + REPLACE(REPLACE(raw_id, '.', '_'), '/', '_') "
+        "ELSE raw_id END AS short_form_val "
+        "RETURN prefix, raw_id, short_form_val\", "
+        "\"MERGE (p:pub {short_form: short_form_val}) "
+        "ON CREATE SET "
+        "p.iri = CASE "
+        "WHEN prefix = 'doi' THEN 'https://doi.org/' + raw_id "
+        "WHEN prefix = 'FlyBase' THEN 'http://flybase.org/reports/' + raw_id "
+        "ELSE 'http://' + prefix + '/' + raw_id END, "
+        "p.curie = CASE WHEN prefix = 'doi' "
+        "THEN 'doi:' + REPLACE(REPLACE(raw_id, '.', '_'), '/', '_') "
+        "ELSE prefix + ':' + raw_id END, "
+        "p.DOI = CASE WHEN prefix = 'doi' THEN [raw_id] ELSE [] END, "
+        "p.label = short_form_val, "
+        "p.uniqueFacets = ['pub'] "
+        "SET p:Entity:Individual\", "
+        "{batchSize: 500, iterateList: true})"
+    )
+vc.nc.commit_list(statements=create_pub_statements)
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
 # Expand any missing synonyms
+# short_form lookup mirrors the schema above:
+#   doi refs  → 'doi_' + replace('.','_') + replace('/','_') on the ID part
+#   other refs → SPLIT(ref, ':')[1]  (e.g. FBrf0260535 for FlyBase)
 start = timeit.default_timer()
 print("Expand any missing synonyms...")
 synonym_queries = [
@@ -201,15 +258,30 @@ for query in synonym_queries:
         "\"WITH primary, "
         "REDUCE(syns = [], syn IN primary." + query['synonym_type'] + " | syns + [apoc.convert.fromJsonMap(syn)]) AS syns "
         "UNWIND syns AS syn "
-        "MATCH (p:pub {short_form: COALESCE(SPLIT(syn.annotations.database_cross_reference[0], ':')[1], 'Unattributed')}) "
-        "MERGE (primary)-[r:has_reference {typ: 'syn', value: [syn.value]}]->(p) "
+        "WITH primary, syn, "
+        "COALESCE(syn.annotations.database_cross_reference[0], '') AS ref "
+        "WITH primary, syn, ref, "
+        "SPLIT(ref, ':')[0] AS prefix, "
+        "SPLIT(ref, ':')[1] AS raw_id "
+        "WITH primary, syn, ref, "
+        "CASE WHEN prefix = 'doi' "
+        "THEN 'doi_' + REPLACE(REPLACE(raw_id, '.', '_'), '/', '_') "
+        "WHEN raw_id IS NOT NULL THEN raw_id "
+        "ELSE 'Unattributed' END AS pub_short_form "
+        "OPTIONAL MATCH (p:pub {short_form: pub_short_form}) "
+        "WITH primary, syn, ref, p, p IS NULL AS unresolved "
+        "MATCH (fallback:pub {short_form: 'Unattributed'}) "
+        "WITH primary, syn, ref, COALESCE(p, fallback) AS resolved_pub, unresolved "
+        "MERGE (primary)-[r:has_reference {typ: 'syn', value: [syn.value]}]->(resolved_pub) "
         "ON CREATE SET r += { "
         "iri: 'http://purl.org/dc/terms/references', "
         "scope: '" + query['scope'] + "', "
         "short_form: 'references', "
         "typ: 'syn', "
         "label: 'has_reference', "
-        "type: 'Annotation'}\", "
+        "type: 'Annotation'} "
+        "WITH r, unresolved, ref "
+        "FOREACH (x IN CASE WHEN unresolved THEN [1] ELSE [] END | SET r.unresolved_ref = [ref])\", "
         "{batchSize: 500, iterateList: true})"
     )
 
