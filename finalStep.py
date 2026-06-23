@@ -125,6 +125,26 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Clean orphaned imageless individuals whose channel was already stripped.
+# When every in_register_with edge is block:['Missing Image'] the channel is
+# never loaded, so the depicts-keyed delete above cannot reach the individual
+# and it survives as a bare stub (label == short_form, no typing/source/image).
+# NB these are synaptic partners, so this also removes their synapsed_to edges
+# — intended, as an imageless neuron cannot be displayed.
+start = timeit.default_timer()
+print("Clean orphaned imageless individuals (no channel, label == short_form)...")
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate("
+    "'MATCH (i:Individual) WHERE i.short_form STARTS WITH \"VFB_\" AND i.label = i.short_form "
+    "AND NOT (i)<-[:depicts]-(:Individual) "
+    "AND NOT i:Template AND NOT i:DataSet AND NOT i:Cluster AND NOT i:pub AND NOT i:Person AND NOT i:Site "
+    "RETURN i', "
+    "'DETACH DELETE i', "
+    "{batchSize: 500, parallel: false})"
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
 # Add has_neuron/region_connectivity labels
 start = timeit.default_timer()
 print("Add has_neuron/region_connectivity labels...")
