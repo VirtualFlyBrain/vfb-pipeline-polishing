@@ -581,6 +581,39 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Add DataSet-level stage & content-type labels, derived from the images each
+# dataset contains, so a DataSet can be filtered by what it holds without first
+# hopping through its images. Presence-based, like the has_neuron_connectivity/
+# NBLAST/NBLASTexp flags above and the has_image flag below - a dataset can
+# legitimately be both Adult and Larva, or Neuron + Split + Expression_pattern
+# at once (e.g. a split-GAL4 dataset), so this is not a majority vote.
+start = timeit.default_timer()
+print("Add DataSet-level stage and content-type labels...")
+vc.nc.commit_list(statements=[
+    "MATCH (i:Individual:has_image)-[:has_source]->(d:DataSet) "
+    "WITH d, "
+    "sum(CASE WHEN i:Adult THEN 1 ELSE 0 END) AS n_adult, "
+    "sum(CASE WHEN i:Larva THEN 1 ELSE 0 END) AS n_larva, "
+    "sum(CASE WHEN i:Neuron THEN 1 ELSE 0 END) AS n_neuron, "
+    "sum(CASE WHEN i:Split THEN 1 ELSE 0 END) AS n_split, "
+    "sum(CASE WHEN i:Expression_pattern THEN 1 ELSE 0 END) AS n_ep, "
+    "sum(CASE WHEN i:Expression_pattern_fragment THEN 1 ELSE 0 END) AS n_epf, "
+    "sum(CASE WHEN i:has_neuron_connectivity THEN 1 ELSE 0 END) AS n_conn, "
+    "sum(CASE WHEN i:NBLAST THEN 1 ELSE 0 END) AS n_nblast, "
+    "sum(CASE WHEN i:NBLASTexp THEN 1 ELSE 0 END) AS n_nblastexp "
+    "FOREACH (_ IN CASE WHEN n_adult > 0 THEN [1] ELSE [] END | SET d:Adult) "
+    "FOREACH (_ IN CASE WHEN n_larva > 0 THEN [1] ELSE [] END | SET d:Larva) "
+    "FOREACH (_ IN CASE WHEN n_neuron > 0 THEN [1] ELSE [] END | SET d:Neuron) "
+    "FOREACH (_ IN CASE WHEN n_split > 0 THEN [1] ELSE [] END | SET d:Split) "
+    "FOREACH (_ IN CASE WHEN n_ep > 0 THEN [1] ELSE [] END | SET d:Expression_pattern) "
+    "FOREACH (_ IN CASE WHEN n_epf > 0 THEN [1] ELSE [] END | SET d:Expression_pattern_fragment) "
+    "FOREACH (_ IN CASE WHEN n_conn > 0 THEN [1] ELSE [] END | SET d:has_neuron_connectivity) "
+    "FOREACH (_ IN CASE WHEN n_nblast > 0 THEN [1] ELSE [] END | SET d:NBLAST) "
+    "FOREACH (_ IN CASE WHEN n_nblastexp > 0 THEN [1] ELSE [] END | SET d:NBLASTexp)"
+])
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
 # Remove any unique facet duplicates
 start = timeit.default_timer()
 print("Remove any unique facet duplicates...")
@@ -684,6 +717,6 @@ monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
-//adding version
+# Adding version
 version = 'PDBv' + time.strftime('%Y-%m-%d')
 vc.nc.commit_list(statements=["MERGE (v:API:Individual {short_form:'version'}) SET v.label='" + version + "' ;"])
