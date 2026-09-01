@@ -97,6 +97,24 @@ monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
+# Process RO_0002113 (has_presynaptic_terminals_in) relationships
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002113]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:has_presynaptic_terminals_in]-(b) SET r2 += r1 SET r2.label=\"has presynaptic terminal in\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
+])
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
+# Process RO_0002110 (has_postsynaptic_terminal_in) relationships
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002110]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:has_postsynaptic_terminal_in]-(b) SET r2 += r1 SET r2.label=\"has postsynaptic terminal in\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
+])
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+
 # Final cleanup statements
 vc.nc.commit_list(statements=[
     "MATCH (n) WHERE exists(n.nodeLabel) and n.nodeLabel = ['pub'] and NOT n:pub SET n:pub",
