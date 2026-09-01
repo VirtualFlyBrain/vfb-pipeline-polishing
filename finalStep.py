@@ -684,6 +684,6 @@ monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
-//adding version
+# Adding version
 version = 'PDBv' + time.strftime('%Y-%m-%d')
 vc.nc.commit_list(statements=["MERGE (v:API:Individual {short_form:'version'}) SET v.label='" + version + "' ;"])
