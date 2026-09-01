@@ -581,6 +581,49 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Fix individual images missing a stage label. Class-based stage inference
+# (the normal route) misses two known cases: EM/connectome individuals typed
+# only against the generic FBbt "neuron" root (no leaf class, so no stage
+# parentage - see e.g. Xu2020Neurons), and individuals typed against synthetic
+# per-line VFBexp_FBtp* "whole expression pattern" stub classes that sit
+# outside the FBbt anatomy hierarchy entirely (e.g. Dickson2017, Xie2018,
+# Hampel2017). Both are still recoverable: every registered image is aligned
+# to a Template, and every VFB_-prefixed Template already carries a correct
+# Adult/Larva flag, so read the stage off that instead of the class.
+#
+# Scope is deliberately Individual:has_image AND short_form STARTS WITH
+# 'VFB_' - has_image alone also matches DataSet nodes (DataSet is itself an
+# Individual, and the "Fixes for scRNAseq DataSets" step below already sets
+# has_image on qualifying DataSet nodes), which have no registered template
+# of their own and would just show up as unresolvable noise; short_form
+# STARTS WITH 'VFB_' excludes those. Dropping has_image entirely instead
+# (Individual + short_form STARTS WITH 'VFB_' alone) was tried and rejected -
+# it also pulls in ~118k individuals that are real anatomy individuals but
+# were never registered to any template at all (e.g. connectome-only nodes
+# known solely from connectivity), which this fix has no way to resolve.
+#
+# Audited against pdb 2026-09-01: 27,704 individuals resolve this way, all to
+# Adult, none to Larva, none ambiguous (no individual's registered templates
+# span both stages).
+start = timeit.default_timer()
+print("Fix individual images missing a stage label via their registered template...")
+vc.nc.commit_list(statements=[
+    "CALL apoc.periodic.iterate("
+    "'MATCH (i:Individual:has_image) WHERE i.short_form STARTS WITH \"VFB_\" AND NOT i:Adult AND NOT i:Larva "
+    "MATCH (i)<-[:depicts]-(:Individual)-[:in_register_with]->(:Template)-[:depicts]->(at:Template) "
+    "WHERE at:Adult OR at:Larva "
+    "RETURN DISTINCT i, at', "
+    "'FOREACH (_ IN CASE WHEN at:Adult THEN [1] ELSE [] END | SET i:Adult) "
+    "FOREACH (_ IN CASE WHEN at:Larva THEN [1] ELSE [] END | SET i:Larva)', "
+    "{batchSize: 500, parallel: false})"
+])
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
 # Add DataSet-level stage & content-type labels, derived from the images each
 # dataset contains, so a DataSet can be filtered by what it holds without first
 # hopping through its images. Presence-based, like the has_neuron_connectivity/
