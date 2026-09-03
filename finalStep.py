@@ -472,6 +472,41 @@ for swc_file in swc_files:
 stop = timeit.default_timer()
 print(f'Total time for additional SWC files: ', stop - start, 'seconds')
 
+
+# Loading SPLITS <-> SWC NBLAST scores from CSV
+start = timeit.default_timer()
+print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
+vc.nc.commit_list([
+    """ 
+    LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row 
+    FIELDTERMINATOR '\\t' 
+    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+    WITH s, b, row.score as score
+    OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
+    WITH s, b, r, score
+    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+        MERGE (s)-[r:has_similar_morphology_to_part_of {
+            iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
+            short_form: "has_similar_morphology_to_part_of",
+            type: "Annotation",
+            NBLAST_score: [score]
+        }]->(b)
+    )
+    WITH s, b, r, score
+    SET r.NBLAST_score = [score]
+    SET s:NBLASTexp, b:NBLASTexp
+    RETURN count(*) as relationships_processed
+    """
+])
+
+# Start monitoring after executing commit_list statement
+start_monitor = timeit.default_timer()
+monitor_apoc_jobs()
+stop_monitor = timeit.default_timer()
+print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+stop = timeit.default_timer()
+print('Run time: ', stop - start)
+
 # Process new-format NBLAST score files
 # -------------------------------------
 # Produced by VFB_similarity_import@efficient-nblast (the run-nblast-* Jenkins jobs).
@@ -568,40 +603,6 @@ for pattern, rel_type, node_label in n2n_specs:
 stop = timeit.default_timer()
 print(f'Total time for new-format NBLAST files: ', stop - start, 'seconds')
 
-
-# Loading SPLITS <-> SWC NBLAST scores from CSV
-start = timeit.default_timer()
-print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
-vc.nc.commit_list([
-    """ 
-    LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row 
-    FIELDTERMINATOR '\\t' 
-    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    WITH s, b, row.score as score
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
-    WITH s, b, r, score
-    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
-        MERGE (s)-[r:has_similar_morphology_to_part_of {
-            iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
-            short_form: "has_similar_morphology_to_part_of",
-            type: "Annotation",
-            NBLAST_score: [score]
-        }]->(b)
-    )
-    WITH s, b, r, score
-    SET r.NBLAST_score = [score]
-    SET s:NBLASTexp, b:NBLASTexp
-    RETURN count(*) as relationships_processed
-    """
-])
-
-# Start monitoring after executing commit_list statement
-start_monitor = timeit.default_timer()
-monitor_apoc_jobs()
-stop_monitor = timeit.default_timer()
-print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
 
 # Add Neuronbridge Hemibrain <-> slide code top 20 scores using USING PERIODIC COMMIT
 start = timeit.default_timer()
