@@ -485,9 +485,10 @@ print(f'Total time for additional SWC files: ', stop - start, 'seconds')
 # its best match regardless of the order the files are loaded in.
 #
 # NBLAST_N2N_MIN_SCORE raises the load threshold above whatever the producing job used
-# (default 0.25 = load every row in the file). NBLAST_N2N_TOP_N, if set above 0, keeps only
-# the first N rows seen for each neuron; the files are sorted by score descending, so this
-# reproduces the legacy "top 20 per neuron" convention closely enough to compare against it.
+# (default 0.25 = load every row in the file). A per-neuron top-N cap is NOT applied here:
+# the polishing job scps the workspace to the Neo4j import dir before this script runs, so
+# a file written at this point would never be visible to LOAD CSV. Cap in the copy job
+# (Push_to_Pipeline2_build) instead, which also saves scp'ing the uncapped file twice.
 start = timeit.default_timer()
 print("Processing new-format NBLAST score files...")
 
@@ -504,7 +505,6 @@ n2n_batch_cache = re.compile(r'_q\d+_t\d+\.tsv$')
 
 n2n_min_score = float(os.environ.get('NBLAST_N2N_MIN_SCORE', '0.25'))
 n2n_batch_size = int(os.environ.get('NBLAST_N2N_BATCH_SIZE', '10000'))
-n2n_top_n = int(os.environ.get('NBLAST_N2N_TOP_N', '0'))
 
 for pattern, rel_type, node_label in n2n_specs:
     n2n_files = [f for f in sorted(glob.glob(pattern)) if not n2n_batch_cache.search(f)]
@@ -513,29 +513,6 @@ for pattern, rel_type, node_label in n2n_specs:
     for n2n_file in n2n_files:
         file_start = timeit.default_timer()
         load_file = n2n_file
-
-        # Optional per-neuron cap, applied to the file before loading. One pass over a
-        # score-descending file, keeping a row while either of its neurons is still under
-        # the cap - the same rule the legacy pipeline documented.
-        if n2n_top_n > 0:
-            load_file = f'capped_{n2n_file}'
-            kept = dropped = 0
-            seen = {}
-            with open(n2n_file) as fin, open(load_file, 'w') as fout:
-                fout.write(fin.readline())
-                for line in fin:
-                    parts = line.rstrip('\n').split('\t')
-                    if len(parts) < 3:
-                        continue
-                    q, t = parts[0], parts[1]
-                    if seen.get(q, 0) < n2n_top_n or seen.get(t, 0) < n2n_top_n:
-                        seen[q] = seen.get(q, 0) + 1
-                        seen[t] = seen.get(t, 0) + 1
-                        fout.write(line)
-                        kept += 1
-                    else:
-                        dropped += 1
-            print(f'  Capped {n2n_file} at top {n2n_top_n} per neuron: kept {kept}, dropped {dropped} -> {load_file}')
 
         print(f"Processing {load_file} -> {rel_type} (min score {n2n_min_score}, batch {n2n_batch_size})...")
 
