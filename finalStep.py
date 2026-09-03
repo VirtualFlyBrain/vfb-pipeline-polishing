@@ -484,11 +484,14 @@ print(f'Total time for additional SWC files: ', stop - start, 'seconds')
 # both avoids duplicate edges and lets a pair scored in more than one template space keep
 # its best match regardless of the order the files are loaded in.
 #
-# NBLAST_N2N_MIN_SCORE raises the load threshold above whatever the producing job used
-# (default 0.25 = load every row in the file). A per-neuron top-N cap is NOT applied here:
-# the polishing job scps the workspace to the Neo4j import dir before this script runs, so
-# a file written at this point would never be visible to LOAD CSV. Cap in the copy job
-# (Push_to_Pipeline2_build) instead, which also saves scp'ing the uncapped file twice.
+# Every row above the threshold is loaded. NBLAST_N2N_MIN_SCORE raises that threshold above
+# whatever the producing job used (default 0.25 = load the whole file).
+#
+# Deliberately no per-neuron top-N cap, the way the legacy swc_swc_* files were built: a
+# rank cut applies a different effective score threshold to every neuron, so it surfaces
+# weak matches for a neuron with few partners and hides strong ones for a neuron with many.
+# If volume ever has to come down, raise the score threshold - that cut means the same
+# thing for every neuron.
 start = timeit.default_timer()
 print("Processing new-format NBLAST score files...")
 
