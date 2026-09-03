@@ -471,6 +471,109 @@ for swc_file in swc_files:
 stop = timeit.default_timer()
 print(f'Total time for additional SWC files: ', stop - start, 'seconds')
 
+# Process new-format neuron-to-neuron NBLAST score files
+# -----------------------------------------------------
+# Produced by VFB_similarity_import@efficient-nblast (the run-nblast-*-n2n Jenkins jobs).
+# These differ from the legacy swc_swc_*.tsv files above in two ways:
+#   * the pair columns are neuron_1 / neuron_2, not query / target
+#   * pairs are canonicalised (neuron_1 < neuron_2) and filtered on score only, with no
+#     top-N-per-neuron cap, so one template can contribute tens of millions of rows
+# The legacy loader is left untouched; this block runs after it, so the new scores are
+# applied on top of the old ones. Where an edge already exists the higher score wins, which
+# both avoids duplicate edges and lets a pair scored in more than one template space keep
+# its best match regardless of the order the files are loaded in.
+#
+# NBLAST_N2N_MIN_SCORE raises the load threshold above whatever the producing job used
+# (default 0.25 = load every row in the file). NBLAST_N2N_TOP_N, if set above 0, keeps only
+# the first N rows seen for each neuron; the files are sorted by score descending, so this
+# reproduces the legacy "top 20 per neuron" convention closely enough to compare against it.
+start = timeit.default_timer()
+print("Processing new-format N2N NBLAST score files...")
+
+n2n_files = sorted(glob.glob('nblast_n_2_n_*.tsv'))
+print(f"Found {len(n2n_files)} N2N files to process: {n2n_files}")
+
+n2n_min_score = float(os.environ.get('NBLAST_N2N_MIN_SCORE', '0.25'))
+n2n_batch_size = int(os.environ.get('NBLAST_N2N_BATCH_SIZE', '10000'))
+n2n_top_n = int(os.environ.get('NBLAST_N2N_TOP_N', '0'))
+
+for n2n_file in n2n_files:
+    file_start = timeit.default_timer()
+    load_file = n2n_file
+
+    # Optional per-neuron cap, applied to the file before loading. One pass over a
+    # score-descending file, keeping a row while either of its neurons is still under the
+    # cap - the same rule the legacy pipeline documented.
+    if n2n_top_n > 0:
+        load_file = f'capped_{n2n_file}'
+        kept = dropped = 0
+        seen = {}
+        with open(n2n_file) as fin, open(load_file, 'w') as fout:
+            fout.write(fin.readline())
+            for line in fin:
+                parts = line.rstrip('\n').split('\t')
+                if len(parts) < 3:
+                    continue
+                q, t = parts[0], parts[1]
+                if seen.get(q, 0) < n2n_top_n or seen.get(t, 0) < n2n_top_n:
+                    seen[q] = seen.get(q, 0) + 1
+                    seen[t] = seen.get(t, 0) + 1
+                    fout.write(line)
+                    kept += 1
+                else:
+                    dropped += 1
+        print(f'  Capped {n2n_file} at top {n2n_top_n} per neuron: kept {kept}, dropped {dropped} -> {load_file}')
+
+    print(f"Processing {load_file} (min score {n2n_min_score}, batch {n2n_batch_size})...")
+
+    # Driving statement. The \\t below reaches Neo4j as \t inside the outer double-quoted
+    # string, which unescapes to a literal tab for FIELDTERMINATOR.
+    n2n_read = (
+        f"LOAD CSV WITH HEADERS FROM 'file:///{load_file}' AS row "
+        f"FIELDTERMINATOR '\\t' "
+        f"WITH row.neuron_1 AS q, row.neuron_2 AS t, row.score AS score "
+        f"WHERE q IS NOT NULL AND t IS NOT NULL AND toFloat(score) >= {n2n_min_score} "
+        f"RETURN q, t, score"
+    )
+
+    n2n_write = (
+        "MATCH (s:Individual {short_form: q}), (b:Individual {short_form: t}) "
+        "OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b) "
+        "FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END | "
+        "  MERGE (s)-[nr:has_similar_morphology_to { "
+        "    iri: 'http://n2o.neo/custom/has_similar_morphology_to', "
+        "    short_form: 'has_similar_morphology_to', "
+        "    type: 'Annotation' "
+        "  }]->(b) "
+        "  SET nr.NBLAST_score = [score] "
+        ") "
+        "FOREACH (ignoreMe IN CASE WHEN r IS NOT NULL AND "
+        "         (r.NBLAST_score IS NULL OR toFloat(r.NBLAST_score[0]) < toFloat(score)) "
+        "         THEN [1] ELSE [] END | "
+        "  SET r.NBLAST_score = [score] "
+        ") "
+        "SET s:NBLAST, b:NBLAST"
+    )
+
+    # apoc.periodic.iterate rather than a bare LOAD CSV: the VNC file alone is ~40M rows,
+    # which will not fit in a single transaction.
+    vc.nc.commit_list([
+        f'CALL apoc.periodic.iterate("{n2n_read}", "{n2n_write}", '
+        f'{{batchSize: {n2n_batch_size}, parallel: false}})'
+    ])
+
+    start_monitor = timeit.default_timer()
+    monitor_apoc_jobs()
+    stop_monitor = timeit.default_timer()
+    print(f'Monitoring Run time for {load_file}: ', stop_monitor - start_monitor, 'seconds')
+
+    file_stop = timeit.default_timer()
+    print(f'Processing time for {load_file}: ', file_stop - file_start, 'seconds')
+
+stop = timeit.default_timer()
+print(f'Total time for N2N files: ', stop - start, 'seconds')
+
+
 # Loading SPLITS <-> SWC NBLAST scores from CSV
 start = timeit.default_timer()
 print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
