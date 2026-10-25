@@ -98,7 +98,7 @@ def run_case(seed):
         for rid_, n, nb in db.execute("SELECT rid, n_new, nb_new FROM updates").fetchall():
             if n is not None: got[rid_]['n'] = n
             if nb is not None: got[rid_]['nb'] = nb
-        for rel, a, b, n, nb in db.execute("SELECT rel, a, b, n_new, nb_new FROM creates").fetchall():
+        for rel, a, b, n, nb in db.execute("SELECT c.rel, na.sf, nb.sf, c.n_new, c.nb_new FROM creates c JOIN nodes na ON na.nid = c.a JOIN nodes nb ON nb.nid = c.b").fetchall():
             got[len(got) + 10000] = {'rel': rel, 'a': a, 'b': b, 'n': n, 'nb': nb}
         got_labels = set(db.execute("SELECT l.label, n.sf FROM labelled l JOIN nodes n USING (nid)").fetchall())
 
