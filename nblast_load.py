@@ -31,6 +31,10 @@ Env:
   NBLAST_DUCKDB_MEMORY     DuckDB memory limit (default: 40% of the container limit)
   NBLAST_DUCKDB_THREADS    DuckDB threads (default 8)
   NBLAST_DUCKDB_DIR        working directory for the DuckDB file + spill (default ./.nblast_duckdb)
+  NBLAST_REPLACE           true = reload into an already-loaded graph: resolve the files as if no
+                           similarity edges existed, then delete all similarity edges and the
+                           NBLAST / NBLASTexp / neuronbridge labels and load (default false, the
+                           polishing case, where only the OWL-imported edges exist)
   NBLAST_CHECKPOINT_IOPS   dbms.checkpoint.iops.limit while loading (default -1 = unlimited;
                            empty = leave it alone). Restored afterwards.
 """
@@ -128,8 +132,8 @@ def container_memory_bytes():
 
 # ---------------------------------------------------------------- phase 1: read the graph
 
-def export_graph(neo, workdir):
-    """Individual short_forms and the existing similarity edges, written to TSVs for DuckDB."""
+def export_graph(neo, workdir, edges=True):
+    """Individual short_forms and (unless edges=False) the existing similarity edges, as TSVs for DuckDB."""
     t = time.time()
     rng = neo.run("MATCH (n:Individual) RETURN min(id(n)) AS lo, max(id(n)) AS hi, count(n) AS n")[0]
     step = max(1, (rng['hi'] - rng['lo']) // 40 + 1)
@@ -141,7 +145,7 @@ def export_graph(neo, workdir):
         for row in neo.run("MATCH (n:Individual) WHERE n.short_form IS NOT NULL RETURN n.short_form AS sf"):
             fn.write(row['sf'] + '\n')
             n_nodes += 1
-        for lo in range(rng['lo'], rng['hi'] + 1, step):
+        for lo in (range(rng['lo'], rng['hi'] + 1, step) if edges else []):
             p = {'lo': lo, 'hi': lo + step}
             for rel in (SIM, PART):
                 for row in neo.run(
@@ -319,6 +323,24 @@ def write(neo, db, batch, workers):
     return totals
 
 
+def clear_existing(neo):
+    """Replace mode: delete every similarity edge and the labels they gave, before the bulk load."""
+    t = time.time()
+    for rel in (SIM, PART):
+        res = neo.run(f"CALL apoc.periodic.iterate('MATCH ()-[r:{rel}]->() RETURN id(r) AS rid', "
+                      f"'MATCH ()-[r]->() WHERE id(r) = rid DELETE r', {{batchSize: 50000, parallel: false}}) "
+                      "YIELD total, failedBatches RETURN total, failedBatches", timeout=86400)[0]
+        left = neo.run(f"MATCH ()-[r:{rel}]->() RETURN count(r) AS n")[0]['n']
+        log(f"  replace: deleted {res['total']} {rel} edges ({res['failedBatches']} batches not committed, {left} left)")
+        if left:
+            raise RuntimeError(f"replace: {left} {rel} edges could not be deleted")
+    for label in LABELS.values():
+        res = neo.run(f"CALL apoc.periodic.iterate('MATCH (n:{label}) RETURN n', 'REMOVE n:{label}', "
+                      "{batchSize: 50000, parallel: false}) YIELD total RETURN total", timeout=86400)[0]
+        log(f"  replace: removed :{label} from {res['total']} nodes")
+    log(f"  replace: cleared in {time.time() - t:.0f}s")
+
+
 def verify(neo, db, before, totals):
     """Edge counts must equal what was there plus what was created."""
     ok = True
@@ -338,9 +360,11 @@ def load_all(endpoint, password):
     workers = int(os.environ.get('NBLAST_LOAD_WORKERS', '4'))
     workdir = os.path.abspath(os.environ.get('NBLAST_DUCKDB_DIR', '.nblast_duckdb'))
     iops = os.environ.get('NBLAST_CHECKPOINT_IOPS', '-1')
+    replace = os.environ.get('NBLAST_REPLACE', '').lower() in ('1', 'true', 'yes')
     neo = Neo(endpoint, password)
     t0 = time.time()
-    log(f"Fast NBLAST load (min score {min_score}, batch {batch}, workers {workers})")
+    log(f"Fast NBLAST load (min score {min_score}, batch {batch}, workers {workers}"
+        f"{', replacing existing similarity edges' if replace else ''})")
 
     # phases 1 and 2: nothing written to the graph yet
     try:
@@ -354,7 +378,7 @@ def load_all(endpoint, password):
             raise PreWriteError(f"only {free >> 30} GiB free in {workdir}, need ~{int(1.5 * need) >> 30} GiB")
         before = {rel: neo.run(f"MATCH ()-[r:{rel}]->() RETURN count(r) AS n")[0]['n']
                   for rel in (SIM, PART)}
-        nodes_tsv, edges_tsv = export_graph(neo, workdir)
+        nodes_tsv, edges_tsv = export_graph(neo, workdir, edges=not replace)
         db, present = resolve(duckdb, plan, nodes_tsv, edges_tsv, workdir, min_score)
     except PreWriteError:
         raise
@@ -372,6 +396,9 @@ def load_all(endpoint, password):
             old_iops = None
             log(f"  WARNING: could not change dbms.checkpoint.iops.limit ({str(e)[:200]})")
     try:
+        if replace:
+            clear_existing(neo)
+            before = {rel: 0 for rel in (SIM, PART)}
         totals = write(neo, db, batch, workers)
         verify(neo, db, before, totals)
     finally:
