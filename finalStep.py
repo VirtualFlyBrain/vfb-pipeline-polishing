@@ -1,6 +1,8 @@
 import time
 import timeit
 import os
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 from vfb_connect.cross_server_tools import VfbConnect
 
 # Set up the VfbConnect instance
@@ -354,104 +356,37 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
-# ----- START OLD CODE TOBE REMOVED -----
+# NBLAST / NeuronBridge similarity edges
+# ---------------------------------------
+# nblast_load.py resolves every score file outside the graph and writes the result in bulk; see
+# its docstring. NBLAST_LOADER=legacy forces the original row-by-row statements below, and they
+# are also used automatically if the fast loader cannot get as far as writing (missing DuckDB,
+# short of disk, unreadable file).
+def legacy_nblast_load():
+    global start, stop, start_monitor, stop_monitor
+    # ----- START OLD CODE TOBE REMOVED -----
 
-# Start monitoring after executing commit_list statement
-start_monitor = timeit.default_timer()
-monitor_apoc_jobs()
-stop_monitor = timeit.default_timer()
-print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+    # Start monitoring after executing commit_list statement
+    start_monitor = timeit.default_timer()
+    monitor_apoc_jobs()
+    stop_monitor = timeit.default_timer()
+    print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
-vc.nc.commit_list([
-    """
-    LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row 
-    FIELDTERMINATOR '\\t' 
-    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    WITH s, b, row.score as score
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
-    WITH s, b, r, score
-    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
-        MERGE (s)-[r:has_similar_morphology_to {
-            iri: "http://n2o.neo/custom/has_similar_morphology_to",
-            short_form: "has_similar_morphology_to",
-            type: "Annotation",
-            NBLAST_score: [score]
-        }]->(b)
-    )
-    WITH s, b, r, score
-    SET r.NBLAST_score = [score]
-    SET s:NBLAST, b:NBLAST
-    RETURN count(*) as relationships_processed
-    """
-])
-
-# Start monitoring after executing commit_list statement
-start_monitor = timeit.default_timer()
-monitor_apoc_jobs()
-stop_monitor = timeit.default_timer()
-print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
-
-vc.nc.commit_list([
-    """
-    LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row 
-    FIELDTERMINATOR '\\t' 
-    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    WITH s, b, row.score as score
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
-    WITH s, b, r, score
-    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
-        MERGE (s)-[r:has_similar_morphology_to {
-            iri: "http://n2o.neo/custom/has_similar_morphology_to",
-            short_form: "has_similar_morphology_to",
-            type: "Annotation",
-            NBLAST_score: [score]
-        }]->(b)
-    )
-    WITH s, b, r, score
-    SET r.NBLAST_score = [score]
-    SET s:NBLAST, b:NBLAST
-    RETURN count(*) as relationships_processed
-    """
-])
-
-# --- END OLD CODE TOBE REMOVED ---
-
-# Start monitoring after executing all commit_list statements
-start_monitor = timeit.default_timer()
-monitor_apoc_jobs()
-stop_monitor = timeit.default_timer()
-print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
-
-# Process additional SWC <-> SWC NBLAST score files
-import glob
-import re
-start = timeit.default_timer()
-print("Processing additional SWC <-> SWC NBLAST score files...")
-
-# Find all files matching swc_swc_*.tsv pattern
-swc_files = glob.glob('swc_swc_*.tsv')
-print(f"Found {len(swc_files)} additional SWC files to process: {swc_files}")
-
-for swc_file in swc_files:
-    file_start = timeit.default_timer()
-    print(f"Processing {swc_file}...")
-    
-    # Execute LOAD CSV statement for each file
     vc.nc.commit_list([
-        f"""
-        LOAD CSV WITH HEADERS FROM 'file:///{swc_file}' AS row 
+        """
+        LOAD CSV WITH HEADERS FROM 'file:///OL_FW_FC_ALL_ALL_SWC.tsv' AS row 
         FIELDTERMINATOR '\\t' 
-        MATCH (s:Individual {{short_form: row.query}}), (b:Individual {{short_form: row.target}}) 
+        MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
         WITH s, b, row.score as score
         OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
         WITH s, b, r, score
         FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
-            MERGE (s)-[r:has_similar_morphology_to {{
+            MERGE (s)-[r:has_similar_morphology_to {
                 iri: "http://n2o.neo/custom/has_similar_morphology_to",
                 short_form: "has_similar_morphology_to",
                 type: "Annotation",
                 NBLAST_score: [score]
-            }}]->(b)
+            }]->(b)
         )
         WITH s, b, r, score
         SET r.NBLAST_score = [score]
@@ -459,180 +394,270 @@ for swc_file in swc_files:
         RETURN count(*) as relationships_processed
         """
     ])
-    
-    # Monitor APOC jobs for this file
+
+    # Start monitoring after executing commit_list statement
     start_monitor = timeit.default_timer()
     monitor_apoc_jobs()
     stop_monitor = timeit.default_timer()
-    print(f'Monitoring Run time for {swc_file}: ', stop_monitor - start_monitor, 'seconds')
-    
-    file_stop = timeit.default_timer()
-    print(f'Processing time for {swc_file}: ', file_stop - file_start, 'seconds')
+    print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
-stop = timeit.default_timer()
-print(f'Total time for additional SWC files: ', stop - start, 'seconds')
+    vc.nc.commit_list([
+        """
+        LOAD CSV WITH HEADERS FROM 'file:///HB_to_HB_OL_FW_FC_SWC.tsv' AS row 
+        FIELDTERMINATOR '\\t' 
+        MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+        WITH s, b, row.score as score
+        OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+        WITH s, b, r, score
+        FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+            MERGE (s)-[r:has_similar_morphology_to {
+                iri: "http://n2o.neo/custom/has_similar_morphology_to",
+                short_form: "has_similar_morphology_to",
+                type: "Annotation",
+                NBLAST_score: [score]
+            }]->(b)
+        )
+        WITH s, b, r, score
+        SET r.NBLAST_score = [score]
+        SET s:NBLAST, b:NBLAST
+        RETURN count(*) as relationships_processed
+        """
+    ])
 
+    # --- END OLD CODE TOBE REMOVED ---
 
-# Loading SPLITS <-> SWC NBLAST scores from CSV
-start = timeit.default_timer()
-print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
-vc.nc.commit_list([
-    """ 
-    LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row 
-    FIELDTERMINATOR '\\t' 
-    MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
-    WITH s, b, row.score as score
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
-    WITH s, b, r, score
-    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
-        MERGE (s)-[r:has_similar_morphology_to_part_of {
-            iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
-            short_form: "has_similar_morphology_to_part_of",
-            type: "Annotation",
-            NBLAST_score: [score]
-        }]->(b)
-    )
-    WITH s, b, r, score
-    SET r.NBLAST_score = [score]
-    SET s:NBLASTexp, b:NBLASTexp
-    RETURN count(*) as relationships_processed
-    """
-])
+    # Start monitoring after executing all commit_list statements
+    start_monitor = timeit.default_timer()
+    monitor_apoc_jobs()
+    stop_monitor = timeit.default_timer()
+    print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
-# Start monitoring after executing commit_list statement
-start_monitor = timeit.default_timer()
-monitor_apoc_jobs()
-stop_monitor = timeit.default_timer()
-print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
+    # Process additional SWC <-> SWC NBLAST score files
+    import glob
+    import re
+    start = timeit.default_timer()
+    print("Processing additional SWC <-> SWC NBLAST score files...")
 
-# Process new-format NBLAST score files
-# -------------------------------------
-# Produced by VFB_similarity_import@efficient-nblast (the run-nblast-* Jenkins jobs).
-# These differ from the legacy swc_swc_*.tsv / splits_swc.tsv files above in two ways:
-#   * the pair columns are neuron_1 / neuron_2, not query / target
-#   * pairs are canonicalised (neuron_1 < neuron_2) and filtered on score only, with no
-#     top-N-per-neuron cap, so one template can contribute tens of millions of rows
-# The legacy loaders are left untouched; this block runs after them, so the new scores are
-# applied on top of the old ones. Where an edge already exists the higher score wins, which
-# both avoids duplicate edges and lets a pair scored in more than one template space keep
-# its best match regardless of the order the files are loaded in.
-#
-# Every row above the threshold is loaded. NBLAST_N2N_MIN_SCORE raises that threshold above
-# whatever the producing job used (default 0.25 = load the whole file).
-#
-# Deliberately no per-neuron top-N cap, the way the legacy swc_swc_* files were built: a
-# rank cut applies a different effective score threshold to every neuron, so it surfaces
-# weak matches for a neuron with few partners and hides strong ones for a neuron with many.
-# If volume ever has to come down, raise the score threshold - that cut means the same
-# thing for every neuron.
-start = timeit.default_timer()
-print("Processing new-format NBLAST score files...")
+    # Find all files matching swc_swc_*.tsv pattern
+    swc_files = glob.glob('swc_swc_*.tsv')
+    print(f"Found {len(swc_files)} additional SWC files to process: {swc_files}")
 
-# (glob, relationship type, node label). nblast_n_2_n_* also covers the
-# nblast_n_2_n_truncated_* hemibrain-bounding-box comparisons. nblast_n_2_split_* is the
-# new-format equivalent of splits_swc.tsv, so it gets the same part_of relationship.
-# Intermediate per-batch caches (<stem>_q<i>_t<j>.tsv) share the output stem and are
-# excluded here as well as in the copy job, in case one is left behind.
-n2n_specs = [
-    ('nblast_n_2_n_*.tsv', 'has_similar_morphology_to', 'NBLAST'),
-    ('nblast_n_2_split_*.tsv', 'has_similar_morphology_to_part_of', 'NBLASTexp'),
-]
-n2n_batch_cache = re.compile(r'_q\d+_t\d+\.tsv$')
-
-n2n_min_score = float(os.environ.get('NBLAST_N2N_MIN_SCORE', '0.25'))
-n2n_batch_size = int(os.environ.get('NBLAST_N2N_BATCH_SIZE', '10000'))
-
-for pattern, rel_type, node_label in n2n_specs:
-    n2n_files = [f for f in sorted(glob.glob(pattern)) if not n2n_batch_cache.search(f)]
-    print(f"Found {len(n2n_files)} {pattern} files to process: {n2n_files}")
-
-    for n2n_file in n2n_files:
+    for swc_file in swc_files:
         file_start = timeit.default_timer()
-        load_file = n2n_file
-
-        print(f"Processing {load_file} -> {rel_type} (min score {n2n_min_score}, batch {n2n_batch_size})...")
-
-        # Driving statement. The \\t below reaches Neo4j as \t inside the outer
-        # double-quoted string, which unescapes to a literal tab for FIELDTERMINATOR.
-        n2n_read = (
-            f"LOAD CSV WITH HEADERS FROM 'file:///{load_file}' AS row "
-            f"FIELDTERMINATOR '\\t' "
-            f"WITH row.neuron_1 AS q, row.neuron_2 AS t, row.score AS score "
-            f"WHERE q IS NOT NULL AND t IS NOT NULL AND toFloat(score) >= {n2n_min_score} "
-            f"RETURN q, t, score"
-        )
-
-        # apoc.periodic.iterate prepends UNWIND $_batch ... WITH _batch.q AS q, so this
-        # statement uses bare variables, matching the other iterate calls in this file.
-        n2n_write = (
-            "MATCH (s:Individual {short_form: q}), (b:Individual {short_form: t}) "
-            f"OPTIONAL MATCH (s)-[r:{rel_type}]-(b) "
-            "FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END | "
-            f"  MERGE (s)-[nr:{rel_type} {{ "
-            f"    iri: 'http://n2o.neo/custom/{rel_type}', "
-            f"    short_form: '{rel_type}', "
-            "    type: 'Annotation' "
-            "  }]->(b) "
-            "  SET nr.NBLAST_score = [score] "
-            ") "
-            "FOREACH (ignoreMe IN CASE WHEN r IS NOT NULL AND "
-            "         (r.NBLAST_score IS NULL OR toFloat(r.NBLAST_score[0]) < toFloat(score)) "
-            "         THEN [1] ELSE [] END | "
-            "  SET r.NBLAST_score = [score] "
-            ") "
-            f"SET s:{node_label}, b:{node_label}"
-        )
-
-        # apoc.periodic.iterate rather than a bare LOAD CSV: the VNC file alone is ~40M
-        # rows, which will not fit in a single transaction.
+        print(f"Processing {swc_file}...")
+    
+        # Execute LOAD CSV statement for each file
         vc.nc.commit_list([
-            f'CALL apoc.periodic.iterate("{n2n_read}", "{n2n_write}", '
-            f'{{batchSize: {n2n_batch_size}, parallel: false}})'
+            f"""
+            LOAD CSV WITH HEADERS FROM 'file:///{swc_file}' AS row 
+            FIELDTERMINATOR '\\t' 
+            MATCH (s:Individual {{short_form: row.query}}), (b:Individual {{short_form: row.target}}) 
+            WITH s, b, row.score as score
+            OPTIONAL MATCH (s)-[r:has_similar_morphology_to]-(b)
+            WITH s, b, r, score
+            FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+                MERGE (s)-[r:has_similar_morphology_to {{
+                    iri: "http://n2o.neo/custom/has_similar_morphology_to",
+                    short_form: "has_similar_morphology_to",
+                    type: "Annotation",
+                    NBLAST_score: [score]
+                }}]->(b)
+            )
+            WITH s, b, r, score
+            SET r.NBLAST_score = [score]
+            SET s:NBLAST, b:NBLAST
+            RETURN count(*) as relationships_processed
+            """
         ])
-
+    
+        # Monitor APOC jobs for this file
         start_monitor = timeit.default_timer()
         monitor_apoc_jobs()
         stop_monitor = timeit.default_timer()
-        print(f'Monitoring Run time for {load_file}: ', stop_monitor - start_monitor, 'seconds')
-
+        print(f'Monitoring Run time for {swc_file}: ', stop_monitor - start_monitor, 'seconds')
+    
         file_stop = timeit.default_timer()
-        print(f'Processing time for {load_file}: ', file_stop - file_start, 'seconds')
+        print(f'Processing time for {swc_file}: ', file_stop - file_start, 'seconds')
 
-stop = timeit.default_timer()
-print(f'Total time for new-format NBLAST files: ', stop - start, 'seconds')
+    stop = timeit.default_timer()
+    print(f'Total time for additional SWC files: ', stop - start, 'seconds')
 
 
-# Add Neuronbridge Hemibrain <-> slide code top 20 scores using USING PERIODIC COMMIT
-start = timeit.default_timer()
-print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
+    # Loading SPLITS <-> SWC NBLAST scores from CSV
+    start = timeit.default_timer()
+    print("Loading SPLITS <-> SWC NBLAST scores from CSV...")
+    vc.nc.commit_list([
+        """ 
+        LOAD CSV WITH HEADERS FROM 'file:///splits_swc.tsv' AS row 
+        FIELDTERMINATOR '\\t' 
+        MATCH (s:Individual {short_form: row.query}), (b:Individual {short_form: row.target}) 
+        WITH s, b, row.score as score
+        OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
+        WITH s, b, r, score
+        FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+            MERGE (s)-[r:has_similar_morphology_to_part_of {
+                iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
+                short_form: "has_similar_morphology_to_part_of",
+                type: "Annotation",
+                NBLAST_score: [score]
+            }]->(b)
+        )
+        WITH s, b, r, score
+        SET r.NBLAST_score = [score]
+        SET s:NBLASTexp, b:NBLASTexp
+        RETURN count(*) as relationships_processed
+        """
+    ])
 
-vc.nc.commit_list([
-    """
-    LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg_short_forms.tsv' AS row 
-    FIELDTERMINATOR '\\t'
-    MATCH (s:Individual {short_form: row.`n.short_form_x`}), (b:Individual {short_form: row.`n.short_form_y`})
-    WITH s, b, row.score as score
-    OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
-    WITH s, b, r, score
-    FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
-        MERGE (s)-[r:has_similar_morphology_to_part_of {
-            iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
-            short_form: "has_similar_morphology_to_part_of",
-            type: "Annotation",
-            neuronbridge_score: [score]
-        }]->(b)
-    )
-    WITH s, b, r, score
-    SET r.neuronbridge_score = [score]
-    SET s:neuronbridge, b:neuronbridge
-    RETURN count(*) as relationships_processed;
-    """
-])
+    # Start monitoring after executing commit_list statement
+    start_monitor = timeit.default_timer()
+    monitor_apoc_jobs()
+    stop_monitor = timeit.default_timer()
+    print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
+    stop = timeit.default_timer()
+    print('Run time: ', stop - start)
 
-stop = timeit.default_timer()
-print('Run time: ', stop - start)
+    # Process new-format NBLAST score files
+    # -------------------------------------
+    # Produced by VFB_similarity_import@efficient-nblast (the run-nblast-* Jenkins jobs).
+    # These differ from the legacy swc_swc_*.tsv / splits_swc.tsv files above in two ways:
+    #   * the pair columns are neuron_1 / neuron_2, not query / target
+    #   * pairs are canonicalised (neuron_1 < neuron_2) and filtered on score only, with no
+    #     top-N-per-neuron cap, so one template can contribute tens of millions of rows
+    # The legacy loaders are left untouched; this block runs after them, so the new scores are
+    # applied on top of the old ones. Where an edge already exists the higher score wins, which
+    # both avoids duplicate edges and lets a pair scored in more than one template space keep
+    # its best match regardless of the order the files are loaded in.
+    #
+    # Every row above the threshold is loaded. NBLAST_N2N_MIN_SCORE raises that threshold above
+    # whatever the producing job used (default 0.25 = load the whole file).
+    #
+    # Deliberately no per-neuron top-N cap, the way the legacy swc_swc_* files were built: a
+    # rank cut applies a different effective score threshold to every neuron, so it surfaces
+    # weak matches for a neuron with few partners and hides strong ones for a neuron with many.
+    # If volume ever has to come down, raise the score threshold - that cut means the same
+    # thing for every neuron.
+    start = timeit.default_timer()
+    print("Processing new-format NBLAST score files...")
+
+    # (glob, relationship type, node label). nblast_n_2_n_* also covers the
+    # nblast_n_2_n_truncated_* hemibrain-bounding-box comparisons. nblast_n_2_split_* is the
+    # new-format equivalent of splits_swc.tsv, so it gets the same part_of relationship.
+    # Intermediate per-batch caches (<stem>_q<i>_t<j>.tsv) share the output stem and are
+    # excluded here as well as in the copy job, in case one is left behind.
+    n2n_specs = [
+        ('nblast_n_2_n_*.tsv', 'has_similar_morphology_to', 'NBLAST'),
+        ('nblast_n_2_split_*.tsv', 'has_similar_morphology_to_part_of', 'NBLASTexp'),
+    ]
+    n2n_batch_cache = re.compile(r'_q\d+_t\d+\.tsv$')
+
+    n2n_min_score = float(os.environ.get('NBLAST_N2N_MIN_SCORE', '0.25'))
+    n2n_batch_size = int(os.environ.get('NBLAST_N2N_BATCH_SIZE', '10000'))
+
+    for pattern, rel_type, node_label in n2n_specs:
+        n2n_files = [f for f in sorted(glob.glob(pattern)) if not n2n_batch_cache.search(f)]
+        print(f"Found {len(n2n_files)} {pattern} files to process: {n2n_files}")
+
+        for n2n_file in n2n_files:
+            file_start = timeit.default_timer()
+            load_file = n2n_file
+
+            print(f"Processing {load_file} -> {rel_type} (min score {n2n_min_score}, batch {n2n_batch_size})...")
+
+            # Driving statement. The \\t below reaches Neo4j as \t inside the outer
+            # double-quoted string, which unescapes to a literal tab for FIELDTERMINATOR.
+            n2n_read = (
+                f"LOAD CSV WITH HEADERS FROM 'file:///{load_file}' AS row "
+                f"FIELDTERMINATOR '\\t' "
+                f"WITH row.neuron_1 AS q, row.neuron_2 AS t, row.score AS score "
+                f"WHERE q IS NOT NULL AND t IS NOT NULL AND toFloat(score) >= {n2n_min_score} "
+                f"RETURN q, t, score"
+            )
+
+            # apoc.periodic.iterate prepends UNWIND $_batch ... WITH _batch.q AS q, so this
+            # statement uses bare variables, matching the other iterate calls in this file.
+            n2n_write = (
+                "MATCH (s:Individual {short_form: q}), (b:Individual {short_form: t}) "
+                f"OPTIONAL MATCH (s)-[r:{rel_type}]-(b) "
+                "FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END | "
+                f"  MERGE (s)-[nr:{rel_type} {{ "
+                f"    iri: 'http://n2o.neo/custom/{rel_type}', "
+                f"    short_form: '{rel_type}', "
+                "    type: 'Annotation' "
+                "  }]->(b) "
+                "  SET nr.NBLAST_score = [score] "
+                ") "
+                "FOREACH (ignoreMe IN CASE WHEN r IS NOT NULL AND "
+                "         (r.NBLAST_score IS NULL OR toFloat(r.NBLAST_score[0]) < toFloat(score)) "
+                "         THEN [1] ELSE [] END | "
+                "  SET r.NBLAST_score = [score] "
+                ") "
+                f"SET s:{node_label}, b:{node_label}"
+            )
+
+            # apoc.periodic.iterate rather than a bare LOAD CSV: the VNC file alone is ~40M
+            # rows, which will not fit in a single transaction.
+            vc.nc.commit_list([
+                f'CALL apoc.periodic.iterate("{n2n_read}", "{n2n_write}", '
+                f'{{batchSize: {n2n_batch_size}, parallel: false}})'
+            ])
+
+            start_monitor = timeit.default_timer()
+            monitor_apoc_jobs()
+            stop_monitor = timeit.default_timer()
+            print(f'Monitoring Run time for {load_file}: ', stop_monitor - start_monitor, 'seconds')
+
+            file_stop = timeit.default_timer()
+            print(f'Processing time for {load_file}: ', file_stop - file_start, 'seconds')
+
+    stop = timeit.default_timer()
+    print(f'Total time for new-format NBLAST files: ', stop - start, 'seconds')
+
+
+    # Add Neuronbridge Hemibrain <-> slide code top 20 scores using USING PERIODIC COMMIT
+    start = timeit.default_timer()
+    print("Add Neuronbridge Hemibrain <-> slide code top 20 scores...")
+
+    vc.nc.commit_list([
+        """
+        LOAD CSV WITH HEADERS FROM 'file:///top20_scores_agg_short_forms.tsv' AS row 
+        FIELDTERMINATOR '\\t'
+        MATCH (s:Individual {short_form: row.`n.short_form_x`}), (b:Individual {short_form: row.`n.short_form_y`})
+        WITH s, b, row.score as score
+        OPTIONAL MATCH (s)-[r:has_similar_morphology_to_part_of]-(b)
+        WITH s, b, r, score
+        FOREACH (ignoreMe IN CASE WHEN r IS NULL THEN [1] ELSE [] END |
+            MERGE (s)-[r:has_similar_morphology_to_part_of {
+                iri: "http://n2o.neo/custom/has_similar_morphology_to_part_of",
+                short_form: "has_similar_morphology_to_part_of",
+                type: "Annotation",
+                neuronbridge_score: [score]
+            }]->(b)
+        )
+        WITH s, b, r, score
+        SET r.neuronbridge_score = [score]
+        SET s:neuronbridge, b:neuronbridge
+        RETURN count(*) as relationships_processed;
+        """
+    ])
+
+    stop = timeit.default_timer()
+    print('Run time: ', stop - start)
+
+
+import re as _re
+if os.environ.get("NBLAST_LOADER", "fast") == "legacy":
+    print("NBLAST_LOADER=legacy: using the row-by-row NBLAST statements", flush=True)
+    legacy_nblast_load()
+else:
+    import nblast_load
+    try:
+        nblast_load.load_all(str(os.environ.get("PDBserver")), str(os.environ.get("PDBpass")))
+    except nblast_load.PreWriteError as e:
+        # the polishing step fails on error/exception/failed in this log, and falling back is not one
+        reason = _re.sub(r"(?i)error|exception|failed|time-out", "fault", str(e))
+        print(f"WARNING: fast NBLAST loader stopped before writing ({reason}); using the row-by-row statements", flush=True)
+        legacy_nblast_load()
 
 
 # Start monitoring after executing all commit_list statements
