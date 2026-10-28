@@ -549,6 +549,10 @@ def legacy_nblast_load():
         ('nblast_n_2_n_*.tsv', 'has_similar_morphology_to', 'NBLAST'),
         ('nblast_n_2_split_*.tsv', 'has_similar_morphology_to_part_of', 'NBLASTexp'),
     ]
+    # The 2026-10 split table is neuron/pattern (the read below takes either pair).
+    # coverage_n_2_pattern_*.tsv is loaded only by nblast_load.py; this fallback leaves it out.
+    if glob.glob('coverage_n_2_pattern_*.tsv'):
+        print("WARNING: coverage_n_2_pattern_*.tsv present but not loaded by the row-by-row fallback")
     n2n_batch_cache = re.compile(r'_q\d+_t\d+\.tsv$')
 
     n2n_min_score = float(os.environ.get('NBLAST_N2N_MIN_SCORE', '0.25'))
@@ -569,7 +573,7 @@ def legacy_nblast_load():
             n2n_read = (
                 f"LOAD CSV WITH HEADERS FROM 'file:///{load_file}' AS row "
                 f"FIELDTERMINATOR '\\t' "
-                f"WITH row.neuron_1 AS q, row.neuron_2 AS t, row.score AS score "
+                f"WITH coalesce(row.neuron_1, row.neuron) AS q, coalesce(row.neuron_2, row.pattern) AS t, row.score AS score "
                 f"WHERE q IS NOT NULL AND t IS NOT NULL AND toFloat(score) >= {n2n_min_score} "
                 f"RETURN q, t, score"
             )
