@@ -64,7 +64,8 @@ def run_case(seed):
             'swc_swc_B.tsv': ('query', 'target'), 'splits_swc.tsv': ('query', 'target'),
             'nblast_n_2_n_X_c.tsv': ('neuron_1', 'neuron_2'), 'nblast_n_2_n_Y_c.tsv': ('neuron_1', 'neuron_2'),
             'nblast_n_2_n_Y_c_q1_t2.tsv': ('neuron_1', 'neuron_2'),         # batch cache: ignored
-            'nblast_n_2_split_Z.tsv': ('neuron_1', 'neuron_2'),
+            # the 2026-10 split table is neuron/pattern; the older one neuron_1/neuron_2: both load the same
+            'nblast_n_2_split_Z.tsv': rnd.choice([('neuron_1', 'neuron_2'), ('neuron', 'pattern')]),
             'top20_scores_agg_short_forms.tsv': ('n.short_form_x', 'n.short_form_y'),
         }
         content = {}
@@ -116,6 +117,56 @@ def run_case(seed):
         shutil.rmtree(work)
 
 
+def coverage_case(seed, min_um=0.0):
+    """coverage_n_2_pattern_*.tsv: every kept row (both ends in the graph, matched_um >= floor) is one
+    COVER edge with its four properties; duplicates keep the first row; labels on both ends."""
+    rnd = random.Random(seed)
+    work = tempfile.mkdtemp()
+    cwd = os.getcwd()
+    os.chdir(work)
+    old = os.environ.get('NBLAST_COVERAGE_MIN_MATCHED_UM')
+    os.environ['NBLAST_COVERAGE_MIN_MATCHED_UM'] = str(min_um)
+    try:
+        neurons = [f'VFB_n{i:07d}' for i in range(30)]
+        patterns = [f'VFB_p{i:07d}' for i in range(10)]
+        known = set(neurons[:27]) | set(patterns[:9])
+        rows = [(rnd.choice(neurons), rnd.choice(patterns), rnd.choice(['split', 'gen1', 'mcfo']),
+                 f'{rnd.random():.2f}', f'{rnd.random():.3f}', str(rnd.randint(20, 400)))
+                for _ in range(rnd.randint(0, 150))]
+        with open('coverage_n_2_pattern_T_c.tsv', 'w') as h:
+            h.write('neuron\tpattern\tkind\tscore\tcoverage\tmatched_um\n')
+            h.write(''.join('\t'.join(r) + '\n' for r in rows))
+        os.makedirs('w')
+        with open('w/nodes.tsv', 'w') as h:
+            h.write('sf\n' + ''.join(n + '\n' for n in sorted(known)))
+        with open('w/edges.tsv', 'w') as h:
+            h.write('rel\trid\ta\tb\tn_s\tn_f\tnb_s\n')
+        db, present = nl.resolve(duckdb, nl.input_plan(0.25), 'w/nodes.tsv', 'w/edges.tsv', os.path.abspath('w'), 0.25)
+        want = {}
+        for n, p, k, sc, cov, um in rows:
+            if n in known and p in known and float(um) >= min_um and (n, p) not in want:
+                want[(n, p)] = (sc, cov, um, k)
+        got = {(a, b): (sc, cov, um, k) for a, b, sc, cov, um, k in db.execute(
+            "SELECT na.sf, nb.sf, c.score, c.coverage, c.matched_um, c.kind FROM cover c "
+            "JOIN nodes na ON na.nid = c.a JOIN nodes nb ON nb.nid = c.b").fetchall()}
+        assert got == want, (seed, set(got.items()) ^ set(want.items()))
+        labels = set(db.execute("SELECT l.label, n.sf FROM labelled l JOIN nodes n USING (nid)").fetchall())
+        assert labels == {(nl.LABELS['cover'], x) for pair in want for x in pair}, seed
+        assert 'coverage_n_2_pattern_T_c.tsv' in present
+        db.close()
+        return len(want)
+    finally:
+        if old is None:
+            os.environ.pop('NBLAST_COVERAGE_MIN_MATCHED_UM', None)
+        else:
+            os.environ['NBLAST_COVERAGE_MIN_MATCHED_UM'] = old
+        os.chdir(cwd)
+        shutil.rmtree(work)
+
+
 if __name__ == '__main__':
-    made = [run_case(s) for s in range(int(sys.argv[1]) if len(sys.argv) > 1 else 200)]
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else 200
+    made = [run_case(s) for s in range(n)]
     print(f'OK: {len(made)} random cases, {sum(made)} edges created in total')
+    cov = [coverage_case(s, min_um=rnd_um) for s in range(n // 4) for rnd_um in (0.0, 50.0)]
+    print(f'OK: {len(cov)} coverage cases, {sum(cov)} coverage edges in total')
