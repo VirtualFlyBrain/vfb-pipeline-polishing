@@ -223,6 +223,29 @@ vc.nc.commit_list(statements=[
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 
+# Synonym refs that are an ORCID, a curator pseudonym or a URL are resolved by IRI, not by splitting on ':'
+# (splitting 'https://orcid.org/0000-...' gave pub '//orcid.org/0000-...' with iri 'http://https///orcid.org/...').
+#   ORCID ('https://orcid.org/<id>', 'orcid.org/<id>', 'ORCID:<id>')  -> 'https://orcid.org/<ID>'
+#   curator pseudonym listed on a Person node ('GOC:dos', 'FBC:DOS', 'FBC:CP') -> that Person's iri (its ORCID)
+#   any other 'http(s)://...' -> the URL itself
+# A Person whose iri matches is labelled :pub and cited directly (pdb enforces unique Entity iri, so a second
+# node with the curator's ORCID iri cannot exist). Unknown ORCIDs / URLs get a pub node keyed on that iri.
+# REF_IRI_EXPR expects `ref`; REF_IRI_PERSON adds the pseudonym lookup and yields `ref_iri` (null for prefix:id refs).
+REF_IRI_EXPR = (
+    "CASE WHEN ref =~ '(?i).*orcid.*[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$' "
+    "THEN 'https://orcid.org/' + toUpper(right(ref, 19)) "
+    "WHEN ref =~ '(?i)^https?://.+' THEN ref ELSE NULL END"
+)
+
+def ref_iri_person(carry):
+    """Cypher that turns `ref` into `ref_iri`, carrying the variables in `carry` (comma-separated)."""
+    return (
+        "WITH " + carry + ", " + REF_IRI_EXPR + " AS url_iri "
+        "OPTIONAL MATCH (cur:Person) WHERE url_iri IS NULL AND ref CONTAINS ':' AND ref IN coalesce(cur.pseudonyms, []) "
+        "WITH " + carry + ", url_iri, head(collect(cur.iri)) AS cur_iri "
+        "WITH " + carry + ", coalesce(url_iri, cur_iri) AS ref_iri "
+    )
+
 # Create missing pub nodes for synonym references (e.g. DOI-based refs not imported via FlyBase).
 # Without this, MATCH (p:pub ...) in the synonym expansion silently drops any synonym whose
 # database_cross_reference points to a pub node that doesn't yet exist in the graph.
@@ -246,6 +269,8 @@ for syn_type in synonym_types_for_pubs:
         "WHERE EXISTS(syn.annotations.database_cross_reference) "
         "WITH TRIM(COALESCE(syn.annotations.database_cross_reference[0], '')) AS ref "
         "WHERE ref <> '' AND ref CONTAINS ':' "
+        + ref_iri_person("ref") +
+        "WITH ref WHERE ref_iri IS NULL "
         "WITH ref, "
         "SPLIT(ref, ':')[0] AS prefix, "
         "TRIM(SPLIT(ref, ':')[1]) AS raw_id "
@@ -265,6 +290,35 @@ for syn_type in synonym_types_for_pubs:
         "ELSE prefix + ':' + raw_id END, "
         "p.DOI = CASE WHEN prefix = 'doi' THEN [raw_id] ELSE [] END, "
         "p.label = short_form_val, "
+        "p.uniqueFacets = ['pub'] "
+        "SET p:Entity:Individual\", "
+        "{batchSize: 500, iterateList: true})"
+    )
+    # ORCID / curator / URL refs: cite the matching Person (labelled :pub), else a pub keyed on the iri
+    create_pub_statements.append(
+        "CALL apoc.periodic.iterate("
+        "\"MATCH (primary) WHERE EXISTS(primary." + syn_type + ") "
+        "UNWIND primary." + syn_type + " AS syn_str "
+        "WITH apoc.convert.fromJsonMap(syn_str) AS syn "
+        "WHERE EXISTS(syn.annotations.database_cross_reference) "
+        "WITH DISTINCT TRIM(COALESCE(syn.annotations.database_cross_reference[0], '')) AS ref "
+        "WHERE ref <> '' "
+        + ref_iri_person("ref") +
+        "WITH DISTINCT ref_iri WHERE ref_iri IS NOT NULL "
+        "RETURN ref_iri\", "
+        "\"OPTIONAL MATCH (cur:Person {iri: ref_iri}) "
+        "FOREACH (_ IN CASE WHEN cur IS NOT NULL THEN [1] ELSE [] END | SET cur:pub) "
+        "WITH ref_iri, cur WHERE cur IS NULL "
+        "OPTIONAL MATCH (other:Entity {iri: ref_iri}) "
+        "WITH ref_iri, other WHERE other IS NULL "
+        "MERGE (p:pub {iri: ref_iri}) "
+        "ON CREATE SET "
+        "p.short_form = CASE WHEN ref_iri STARTS WITH 'https://orcid.org/' "
+        "THEN 'orcid_' + replace(substring(ref_iri, 18), '-', '_') "
+        "ELSE 'url_' + apoc.text.replace(apoc.text.replace(ref_iri, '^https?://', ''), '[^A-Za-z0-9]+', '_') END, "
+        "p.label = CASE WHEN ref_iri STARTS WITH 'https://orcid.org/' "
+        "THEN 'ORCID ' + substring(ref_iri, 18) "
+        "ELSE apoc.text.replace(ref_iri, '^https?://', '') END, "
         "p.uniqueFacets = ['pub'] "
         "SET p:Entity:Individual\", "
         "{batchSize: 500, iterateList: true})"
@@ -299,17 +353,20 @@ for query in synonym_queries:
         "REDUCE(syns = [], syn IN primary." + query['synonym_type'] + " | syns + [apoc.convert.fromJsonMap(syn)]) AS syns "
         "UNWIND syns AS syn "
         "WITH primary, syn, TRIM(COALESCE(syn.annotations.database_cross_reference[0], '')) AS ref "
-        "WITH primary, syn, ref, "
+        + ref_iri_person("primary, syn, ref") +
+        "WITH primary, syn, ref, ref_iri, "
         "CASE WHEN ref <> '' AND ref CONTAINS ':' THEN SPLIT(ref, ':')[0] ELSE NULL END AS prefix, "
         "CASE WHEN ref <> '' AND ref CONTAINS ':' THEN TRIM(SPLIT(ref, ':')[1]) ELSE NULL END AS raw_id "
-        "WITH primary, syn, ref, prefix, raw_id, "
+        "WITH primary, syn, ref, ref_iri, prefix, raw_id, "
         "CASE WHEN prefix = 'doi' AND raw_id IS NOT NULL "
         "THEN 'doi_' + REPLACE(REPLACE(raw_id, '.', '_'), '/', '_') "
         "WHEN raw_id IS NOT NULL THEN raw_id "
         "ELSE 'Unattributed' END AS pub_short_form, "
         "CASE WHEN ref = '' OR NOT ref CONTAINS ':' THEN [syn.value] ELSE [ref] END AS unresolved_ref, "
         "CASE WHEN ref = '' OR NOT ref CONTAINS ':' THEN true ELSE false END AS missing_ref "
-        "OPTIONAL MATCH (p:pub {short_form: pub_short_form}) "
+        "OPTIONAL MATCH (ip:pub {iri: ref_iri}) "
+        "OPTIONAL MATCH (sp:pub {short_form: pub_short_form}) WHERE ref_iri IS NULL "
+        "WITH primary, syn, ref, coalesce(ip, sp) AS p, unresolved_ref, missing_ref "
         "WITH primary, syn, ref, p, p IS NULL AS unresolved, unresolved_ref, missing_ref "
         "MATCH (fallback:pub {short_form: 'Unattributed'}) "
         "WITH primary, syn, ref, COALESCE(p, fallback) AS resolved_pub, (unresolved OR missing_ref) AS unresolved, unresolved_ref "
