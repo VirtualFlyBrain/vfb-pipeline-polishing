@@ -61,6 +61,19 @@ vc.nc.commit_list(statements=[
     "MATCH (n:ObjectProperty) WHERE n.label STARTS WITH 'RO_' SET n.label = n.label_rdfs[0]"
 ])
 
+# Merge underscore/space duplicate labels on ObjectProperty nodes: where the KB
+# label is the underscore form and rdfs:label also carries the spaced form (e.g.
+# RO_0002490 existence_overlaps / "existence overlaps"), keep one label - the
+# spaced form, matching the edge labels set below - and drop the duplicate.
+# Only touches nodes whose spaced twin is already in label_rdfs, so obsolete
+# or genuinely different alternative labels are left alone.
+vc.nc.commit_list(statements=[
+    "MATCH (n:ObjectProperty) WHERE n.label CONTAINS '_' AND n.label_rdfs IS NOT NULL AND replace(n.label,'_',' ') IN n.label_rdfs "
+    "WITH n, n.label AS old, replace(n.label,'_',' ') AS spaced "
+    "SET n.label_rdfs = [x IN n.label_rdfs WHERE x <> old], n.label = spaced",
+    "CALL apoc.periodic.iterate('MATCH ()-[r:existence_overlaps]->() WHERE r.label = \"existence_overlaps\" RETURN r', 'SET r.label=\"existence overlaps\"', {batchSize: 1000, parallel: false})"
+])
+
 # Process RO_0002292 (expresses) relationships
 vc.nc.commit_list(statements=[
     "CALL apoc.periodic.iterate('MATCH (a)<-[r1:RO_0002292]-(b) RETURN a, b, r1', 'MERGE (a)<-[r2:expresses]-(b) SET r2 += r1 SET r2.label=\"expresses\" SET r2.type=\"Related\" DELETE r1', {batchSize: 100, parallel: false})"
