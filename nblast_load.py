@@ -124,7 +124,12 @@ class Neo:
                 res = j['results'][0]
                 return [dict(zip(res['columns'], d['row'])) for d in res['data']]
             code = j['errors'][0].get('code', '')
-            if 'TransientError' in code and attempt < retries - 1:      # deadlock / lock timeout: retry
+            msg = j['errors'][0].get('message', '')
+            # a deadlock can surface at commit as Neo.DatabaseError.Transaction.TransactionCommitFailed (not a
+            # TransientError code), which failed the 20261030 run's polishing after 2h: retry those too
+            transient = ('TransientError' in code or 'DeadlockDetected' in msg
+                         or ('TransactionCommitFailed' in code and "can't acquire" in msg))
+            if transient and attempt < retries - 1:      # deadlock / lock timeout: retry
                 # jittered exponential backoff: with a fixed sleep the two deadlocked writers wake
                 # together and deadlock again (pdb-nblast-20261025 failed after 6 such retries)
                 time.sleep(random.uniform(0.5, 1.0) * min(60, 2 ** attempt))
