@@ -118,8 +118,9 @@ def run_case(seed):
 
 
 def coverage_case(seed, min_um=0.0):
-    """coverage_n_2_pattern_*.tsv: every kept row (both ends in the graph, matched_um >= floor) is one
-    COVER edge with its four properties; duplicates keep the first row; labels on both ends."""
+    """coverage_n_2_pattern_*.tsv: coverage and matched_um are properties of the part_of edge for the same
+    (neuron, pattern), existing or created by the split table; rows with no such edge load nothing;
+    duplicates keep the first row; no coverage relation and no coverage label exist."""
     rnd = random.Random(seed)
     work = tempfile.mkdtemp()
     cwd = os.getcwd()
@@ -130,6 +131,14 @@ def coverage_case(seed, min_um=0.0):
         neurons = [f'VFB_n{i:07d}' for i in range(30)]
         patterns = [f'VFB_p{i:07d}' for i in range(10)]
         known = set(neurons[:27]) | set(patterns[:9])
+        existing = {}      # (n, p) -> rid, edges already in the graph
+        for n in neurons[:27]:
+            for p in patterns[:9]:
+                if rnd.random() < 0.15:
+                    existing[(n, p)] = len(existing) + 1
+        split = {(rnd.choice(neurons), rnd.choice(patterns)) for _ in range(rnd.randint(0, 60))}
+        with open('split_n_2_pattern.tsv', 'w') as h:
+            h.write('neuron\tpattern\tscore\n' + ''.join(f'{n}\t{p}\t0.5\n' for n, p in sorted(split)))
         rows = [(rnd.choice(neurons), rnd.choice(patterns), rnd.choice(['split', 'gen1', 'mcfo']),
                  f'{rnd.random():.2f}', f'{rnd.random():.3f}', str(rnd.randint(20, 400)))
                 for _ in range(rnd.randint(0, 150))]
@@ -141,17 +150,26 @@ def coverage_case(seed, min_um=0.0):
             h.write('sf\n' + ''.join(n + '\n' for n in sorted(known)))
         with open('w/edges.tsv', 'w') as h:
             h.write('rel\trid\ta\tb\tn_s\tn_f\tnb_s\n')
-        db, present = nl.resolve(duckdb, nl.input_plan(0.25), 'w/nodes.tsv', 'w/edges.tsv', os.path.abspath('w'), 0.25)
+            h.write(''.join(f'{nl.PART}\t{rid}\t{n}\t{p}\t0.3\t0.3\t\n' for (n, p), rid in existing.items()))
+        plan = [('split_n_2_pattern.tsv', nl.PART, nl.MAXK, [nl.NP])]
+        db, present = nl.resolve(duckdb, plan, 'w/nodes.tsv', 'w/edges.tsv', os.path.abspath('w'), 0.25)
+        have = set(existing) | {(n, p) for n, p in split if n in known and p in known}
         want = {}
         for n, p, k, sc, cov, um in rows:
-            if n in known and p in known and float(um) >= min_um and (n, p) not in want:
-                want[(n, p)] = (sc, cov, um, k)
-        got = {(a, b): (sc, cov, um, k) for a, b, sc, cov, um, k in db.execute(
-            "SELECT na.sf, nb.sf, c.score, c.coverage, c.matched_um, c.kind FROM cover c "
-            "JOIN nodes na ON na.nid = c.a JOIN nodes nb ON nb.nid = c.b").fetchall()}
-        assert got == want, (seed, set(got.items()) ^ set(want.items()))
-        labels = set(db.execute("SELECT l.label, n.sf FROM labelled l JOIN nodes n USING (nid)").fetchall())
-        assert labels == {(nl.LABELS['cover'], x) for pair in want for x in pair}, seed
+            if n in known and p in known and float(um) >= min_um and (n, p) in have and (n, p) not in want:
+                want[(n, p)] = (cov, um)
+        got = {}
+        for a, b, cov, um in db.execute("SELECT na.sf, nb.sf, c.cov, c.um FROM creates c JOIN nodes na ON na.nid = c.a "
+                                        "JOIN nodes nb ON nb.nid = c.b WHERE c.cov IS NOT NULL").fetchall():
+            got[(a, b)] = (cov, um)
+        rid_pair = {rid: pair for pair, rid in existing.items()}
+        for rid, cov, um in db.execute("SELECT rid, cov, um FROM updates WHERE cov IS NOT NULL").fetchall():
+            got[rid_pair[rid]] = (cov, um)
+        # edge orientation of created edges is the split row's: compare as unordered pairs
+        norm = lambda d: {tuple(sorted(k)): v for k, v in d.items()}
+        assert norm(got) == norm(want), (seed, set(norm(got).items()) ^ set(norm(want).items()))
+        labels = {l for l, _ in db.execute("SELECT l.label, n.sf FROM labelled l JOIN nodes n USING (nid)").fetchall()}
+        assert labels <= {nl.LABELS['part']}, (seed, labels)
         assert 'coverage_n_2_pattern_T_c.tsv' in present
         db.close()
         return len(want)
@@ -169,4 +187,4 @@ if __name__ == '__main__':
     made = [run_case(s) for s in range(n)]
     print(f'OK: {len(made)} random cases, {sum(made)} edges created in total')
     cov = [coverage_case(s, min_um=rnd_um) for s in range(n // 4) for rnd_um in (0.0, 50.0)]
-    print(f'OK: {len(cov)} coverage cases, {sum(cov)} coverage edges in total')
+    print(f'OK: {len(cov)} coverage cases, {sum(cov)} coverage annotations in total')

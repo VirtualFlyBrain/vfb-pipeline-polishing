@@ -19,9 +19,12 @@ This module gets the same end state in three phases:
      * a new edge points the way the first row that created it did.
    The result is two lists: edges to CREATE and existing edges (by id) whose properties change.
    coverage_n_2_pattern_*.tsv (VFB_similarity_import nblast_n2split_runner, 2026-10: neuron,
-   pattern, kind, score, coverage, matched_um) is a relation of its own, COVER, that nothing
-   else writes: its rows are created as they are (one per neuron-pattern pair by construction),
-   with the optional floors NBLAST_COVERAGE_MIN_MATCHED_UM / NBLAST_COVERAGE_MIN_SCORE.
+   pattern, kind, score, coverage, matched_um) is not a relation of its own: there is no such
+   relationship type in the VFB schema. Its coverage and matched_um become properties (one-element
+   lists, like NBLAST_score) of the has_similar_morphology_to_part_of edge for the same neuron and
+   pattern, whether that edge already exists or is created by this load. A coverage row with no such
+   edge is not loaded (counted in the log), so coverage never adds edges. Optional floors:
+   NBLAST_COVERAGE_MIN_MATCHED_UM / NBLAST_COVERAGE_MIN_SCORE.
 3. Write: CREATE / SET in large UNWIND batches over HTTP, optionally from several workers, then
    one label pass from the set of neurons the rows touched (the labels the old per-row SETs
    gave).
@@ -68,9 +71,7 @@ import requests
 _SFX = os.environ.get('NBLAST_TEST_SUFFIX', '')
 SIM = 'has_similar_morphology_to' + _SFX
 PART = 'has_similar_morphology_to_part_of' + _SFX
-COVER = 'covered_by_expression_pattern' + _SFX      # neuron -> pattern, from coverage_n_2_pattern_*.tsv
-LABELS = {'sim': 'NBLAST' + _SFX, 'part': 'NBLASTexp' + _SFX, 'nb': 'neuronbridge' + _SFX,
-          'cover': 'NBLASTcoverage' + _SFX}
+LABELS = {'sim': 'NBLAST' + _SFX, 'part': 'NBLASTexp' + _SFX, 'nb': 'neuronbridge' + _SFX}
 BATCH_CACHE = re.compile(r'_q\d+_t\d+\.tsv$')
 LEGACY, MAXK, NB = 0, 1, 2
 # column pairs a file may use; resolve() takes the first pair present (the 2026-10 split table is
@@ -292,11 +293,9 @@ def resolve(duckdb, plan, nodes_tsv, edges_tsv, workdir, min_score):
     log(f"  resolved {n_rows} rows: {summary[0]} new edges, {summary[1]} existing edges to update, "
         f"{summary[2]} node labels; {time.time() - t:.0f}s")
 
-    # coverage: a relation nothing else writes, so no merge with existing edges; rows are
-    # created as they are. One row per (neuron, pattern) by construction (the producer keeps each
-    # neuron's top N patterns per kind, and a pattern has one kind); a duplicate keeps the first.
-    db.execute("CREATE TABLE cover (a INTEGER, b INTEGER, score VARCHAR, coverage VARCHAR, "
-               "matched_um VARCHAR, kind VARCHAR)")
+    # coverage: coverage and matched_um ride on the has_similar_morphology_to_part_of edge of the
+    # same (neuron, pattern) pair, existing or created above. No edge, no row: coverage adds no edges.
+    db.execute("CREATE TABLE cover (a INTEGER, b INTEGER, coverage VARCHAR, matched_um VARCHAR)")
     min_um = float(os.environ.get('NBLAST_COVERAGE_MIN_MATCHED_UM', '0') or 0)
     min_cs = os.environ.get('NBLAST_COVERAGE_MIN_SCORE', '')
     for path in coverage_files():
@@ -306,26 +305,42 @@ def resolve(duckdb, plan, nodes_tsv, edges_tsv, workdir, min_score):
         db.execute(f"CREATE TABLE raw AS SELECT * FROM read_csv('{path}', delim='\t', header=true, "
                    f"quote='', all_varchar=true, null_padding=true)")
         cols = [c[0] for c in db.execute("DESCRIBE raw").fetchall()]
-        need = ['neuron', 'pattern', 'kind', 'score', 'coverage', 'matched_um']
+        need = ['neuron', 'pattern', 'score', 'coverage', 'matched_um']
         if any(c not in cols for c in need):
             raise PreWriteError(f"{path}: expected columns {need}; found {cols}")
         thr = f"AND TRY_CAST(r.matched_um AS DOUBLE) >= {min_um}"
         if min_cs:
             thr += f" AND TRY_CAST(r.score AS DOUBLE) >= {float(min_cs)}"
         n_raw = db.execute("SELECT count(*) FROM raw").fetchone()[0]
-        db.execute(f"""INSERT INTO cover SELECT na.nid, nb.nid, r.score, r.coverage, r.matched_um, r.kind
+        db.execute(f"""INSERT INTO cover SELECT na.nid, nb.nid, r.coverage, r.matched_um
                        FROM raw r JOIN nodes na ON na.sf = r.neuron JOIN nodes nb ON nb.sf = r.pattern
                        WHERE r.neuron IS NOT NULL AND r.pattern IS NOT NULL {thr}
                        QUALIFY row_number() OVER (PARTITION BY na.nid, nb.nid ORDER BY r.rowid) = 1""")
         n_kept = db.execute("SELECT count(*) FROM cover").fetchone()[0]
         log(f"  read {path}: {n_raw} rows, {n_kept} kept so far ({time.time() - ft:.0f}s)")
     db.execute("DROP TABLE IF EXISTS raw")
-    db.execute(f"""INSERT INTO labelled SELECT DISTINCT '{LABELS['cover']}', nid
-                   FROM (SELECT a AS nid FROM cover UNION ALL SELECT b FROM cover)""")
-    db.execute("CHECKPOINT")
+    db.execute("ALTER TABLE creates ADD COLUMN cov VARCHAR")
+    db.execute("ALTER TABLE creates ADD COLUMN um VARCHAR")
+    db.execute("ALTER TABLE updates ADD COLUMN cov VARCHAR")
+    db.execute("ALTER TABLE updates ADD COLUMN um VARCHAR")
     n_cover = db.execute("SELECT count(*) FROM cover").fetchone()[0]
     if n_cover:
-        log(f"  coverage: {n_cover} edges to create")
+        db.execute("""CREATE TABLE covx AS SELECT least(a, b) AS lo, greatest(a, b) AS hi, coverage, matched_um
+                      FROM cover QUALIFY row_number() OVER (PARTITION BY least(a, b), greatest(a, b) ORDER BY a, b) = 1""")
+        db.execute(f"""UPDATE creates SET cov = x.coverage, um = x.matched_um FROM covx x
+                       WHERE creates.rel = '{PART}' AND least(creates.a, creates.b) = x.lo
+                         AND greatest(creates.a, creates.b) = x.hi""")
+        db.execute(f"""UPDATE updates SET cov = x.coverage, um = x.matched_um FROM ex e, covx x
+                       WHERE updates.rel = e.rel AND updates.rid = e.rid AND e.rel = '{PART}'
+                         AND least(e.a, e.b) = x.lo AND greatest(e.a, e.b) = x.hi""")
+        db.execute(f"""INSERT INTO updates SELECT e.rel, e.rid, NULL, NULL, x.coverage, x.matched_um
+                       FROM ex e JOIN covx x ON e.rel = '{PART}' AND least(e.a, e.b) = x.lo AND greatest(e.a, e.b) = x.hi
+                       WHERE NOT EXISTS (SELECT 1 FROM updates u WHERE u.rel = e.rel AND u.rid = e.rid)""")
+        hit = db.execute("SELECT (SELECT count(*) FROM creates WHERE cov IS NOT NULL) + "
+                         "(SELECT count(*) FROM updates WHERE cov IS NOT NULL)").fetchone()[0]
+        log(f"  coverage: {hit} of {n_cover} rows land on a has_similar_morphology_to_part_of edge; "
+            f"{n_cover - hit} have no such edge and are not loaded")
+    db.execute("CHECKPOINT")
     return db, present
 
 
@@ -334,12 +349,16 @@ def resolve(duckdb, plan, nodes_tsv, edges_tsv, workdir, min_score):
 def write(neo, db, batch, workers):
     t = time.time()
 
-    def props(rel, n_new, nb_new):
+    def props(rel, n_new, nb_new, cov=None, um=None):
         p = {'iri': f'http://n2o.neo/custom/{rel}', 'short_form': rel, 'type': 'Annotation'}
         if n_new is not None:
             p['NBLAST_score'] = [n_new]
         if nb_new is not None:
             p['neuronbridge_score'] = [nb_new]
+        if cov is not None:
+            p['coverage'] = [cov]
+        if um is not None:
+            p['matched_um'] = [um]
         return p
 
     def chunks(sql):
@@ -367,30 +386,20 @@ def write(neo, db, batch, workers):
         st = (f"UNWIND $rows AS row MATCH (s:Individual {{short_form: row.a}}) "
               f"MATCH (b:Individual {{short_form: row.b}}) CREATE (s)-[r:{rel}]->(b) SET r = row.p "
               f"RETURN count(r) AS n")
-        made = run_parallel(st, ([{'a': a, 'b': b, 'p': props(rel, n, nb)} for a, b, n, nb in rows]
-                                 for rows in chunks(f"SELECT na.sf, nb.sf, c.n_new, c.nb_new FROM creates c "
+        made = run_parallel(st, ([{'a': a, 'b': b, 'p': props(rel, n, nb, cv, um)} for a, b, n, nb, cv, um in rows]
+                                 for rows in chunks(f"SELECT na.sf, nb.sf, c.n_new, c.nb_new, c.cov, c.um FROM creates c "
                                                    f"JOIN nodes na ON na.nid = c.a JOIN nodes nb ON nb.nid = c.b "
                                                    f"WHERE c.rel = '{rel}'")))
         st = ("UNWIND $rows AS row MATCH ()-[r]->() WHERE id(r) = row.id "
               "FOREACH (x IN CASE WHEN row.n IS NULL THEN [] ELSE [1] END | SET r.NBLAST_score = [row.n]) "
               "FOREACH (x IN CASE WHEN row.nb IS NULL THEN [] ELSE [1] END | SET r.neuronbridge_score = [row.nb]) "
+              "FOREACH (x IN CASE WHEN row.cov IS NULL THEN [] ELSE [1] END | SET r.coverage = [row.cov]) "
+              "FOREACH (x IN CASE WHEN row.um IS NULL THEN [] ELSE [1] END | SET r.matched_um = [row.um]) "
               "RETURN count(r) AS n")
-        upd = run_parallel(st, ([{'id': rid, 'n': n, 'nb': nb} for rid, n, nb in rows]
-                                for rows in chunks(f"SELECT rid, n_new, nb_new FROM updates WHERE rel = '{rel}'")))
+        upd = run_parallel(st, ([{'id': rid, 'n': n, 'nb': nb, 'cov': cv, 'um': um} for rid, n, nb, cv, um in rows]
+                                for rows in chunks(f"SELECT rid, n_new, nb_new, cov, um FROM updates WHERE rel = '{rel}'")))
         totals[rel] = (made, upd)
         log(f"  {rel}: created {made}, updated {upd} ({time.time() - t:.0f}s)")
-    # coverage edges: created outright, every property as a one-element list like NBLAST_score
-    st = (f"UNWIND $rows AS row MATCH (s:Individual {{short_form: row.a}}) "
-          f"MATCH (b:Individual {{short_form: row.b}}) CREATE (s)-[r:{COVER}]->(b) SET r = row.p "
-          f"RETURN count(r) AS n")
-    made = run_parallel(st, ([{'a': a, 'b': b, 'p': {
-                                  'iri': f'http://n2o.neo/custom/{COVER}', 'short_form': COVER, 'type': 'Annotation',
-                                  'NBLAST_score': [sc], 'coverage': [cov], 'matched_um': [um], 'pattern_kind': [kind]}}
-                              for a, b, sc, cov, um, kind in rows]
-                             for rows in chunks("SELECT na.sf, nb.sf, c.score, c.coverage, c.matched_um, c.kind "
-                                                "FROM cover c JOIN nodes na ON na.nid = c.a JOIN nodes nb ON nb.nid = c.b")))
-    totals[COVER] = (made, 0)
-    log(f"  {COVER}: created {made} ({time.time() - t:.0f}s)")
     for label in LABELS.values():
         st = f"UNWIND $rows AS sf MATCH (n:Individual {{short_form: sf}}) SET n:{label} RETURN count(n) AS n"
         n = run_parallel(st, ([r[0] for r in rows] for rows in chunks(
@@ -402,7 +411,7 @@ def write(neo, db, batch, workers):
 def clear_existing(neo):
     """Replace mode: delete every similarity edge and the labels they gave, before the bulk load."""
     t = time.time()
-    for rel in (SIM, PART, COVER):
+    for rel in (SIM, PART):
         res = neo.run(f"CALL apoc.periodic.iterate('MATCH ()-[r:{rel}]->() RETURN id(r) AS rid', "
                       f"'MATCH ()-[r]->() WHERE id(r) = rid DELETE r', {{batchSize: 50000, parallel: false}}) "
                       "YIELD total, failedBatches RETURN total, failedBatches", timeout=86400)[0]
@@ -420,11 +429,10 @@ def clear_existing(neo):
 def verify(neo, db, before, totals):
     """Edge counts must equal what was there plus what was created."""
     ok = True
-    for rel in (SIM, PART, COVER):
+    for rel in (SIM, PART):
         now = neo.run(f"MATCH ()-[r:{rel}]->() RETURN count(r) AS n")[0]['n']
         want = before[rel] + totals[rel][0]
-        exp = db.execute("SELECT count(*) FROM cover" if rel == COVER else
-                         f"SELECT count(*) FROM creates WHERE rel = '{rel}'").fetchone()[0]
+        exp = db.execute(f"SELECT count(*) FROM creates WHERE rel = '{rel}'").fetchone()[0]
         log(f"  {rel}: {now} edges (was {before[rel]}, +{totals[rel][0]} created, {exp} planned)")
         ok &= (now == want and totals[rel][0] == exp)
     if not ok:
@@ -454,7 +462,7 @@ def load_all(endpoint, password):
         if free < 1.5 * need:
             raise PreWriteError(f"only {free >> 30} GiB free in {workdir}, need ~{int(1.5 * need) >> 30} GiB")
         before = {rel: neo.run(f"MATCH ()-[r:{rel}]->() RETURN count(r) AS n")[0]['n']
-                  for rel in (SIM, PART, COVER)}
+                  for rel in (SIM, PART)}
         nodes_tsv, edges_tsv = export_graph(neo, workdir, edges=not replace)
         db, present = resolve(duckdb, plan, nodes_tsv, edges_tsv, workdir, min_score)
     except PreWriteError:
@@ -475,7 +483,7 @@ def load_all(endpoint, password):
     try:
         if replace:
             clear_existing(neo)
-            before = {rel: 0 for rel in (SIM, PART, COVER)}
+            before = {rel: 0 for rel in (SIM, PART)}
         totals = write(neo, db, batch, workers)
         verify(neo, db, before, totals)
     finally:
