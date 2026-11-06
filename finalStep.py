@@ -250,6 +250,34 @@ REF_IRI_EXPR = (
     "WHEN ref =~ '(?i)^https?://.+' THEN ref ELSE NULL END"
 )
 
+# Preprints that FBbt still cites although the paper is out: a synonym ref to a key is cited as its value.
+# Drop an entry once FBbt cites the published paper itself.
+PUB_SUPERSEDED = {
+    'doi:10.1101/2023.06.05.543407': 'doi:10.7554/eLife.97766.1',  # Marin et al. 2023 bioRxiv -> eLife 13:RP97766 (2024)
+}
+SUPERSEDED_MAP = "{" + ", ".join("`%s`: '%s'" % kv for kv in PUB_SUPERSEDED.items()) + "}"
+_REF0 = "TRIM(COALESCE(syn.annotations.database_cross_reference[0], ''))"
+FIRST_SYN_REF = "coalesce(" + SUPERSEDED_MAP + "[" + _REF0 + "], " + _REF0 + ")"
+# iri of a prefix:id pub, as the pub-node creation below writes it (null for other prefixes)
+PUB_IRI_EXPR = ("CASE WHEN prefix = 'doi' THEN 'https://doi.org/' + raw_id "
+                "WHEN prefix = 'FlyBase' THEN 'http://flybase.org/reports/' + raw_id ELSE NULL END")
+
+
+def report_iterate(results, what):
+    """apoc.periodic.iterate reports failed batches in its result instead of raising: print them, so a batch that
+    fails (e.g. on the pdb's unique-iri constraint) is not silently lost, as in run 20261105."""
+    for res in results or []:
+        try:
+            cols = res['columns']
+            for d in res['data']:
+                row = dict(zip(cols, d['row']))
+                if row.get('failedBatches') or row.get('errorMessages'):
+                    print("WARNING %s: %s failed batches, %s failed operations: %s" % (
+                        what, row.get('failedBatches'), row.get('failedOperations'), row.get('errorMessages')))
+        except (KeyError, TypeError):
+            continue
+
+
 def ref_iri_person(carry):
     """Cypher that turns `ref` into `ref_iri`, carrying the variables in `carry` (comma-separated)."""
     return (
@@ -280,7 +308,7 @@ for syn_type in synonym_types_for_pubs:
         "UNWIND primary." + syn_type + " AS syn_str "
         "WITH apoc.convert.fromJsonMap(syn_str) AS syn "
         "WHERE EXISTS(syn.annotations.database_cross_reference) "
-        "WITH TRIM(COALESCE(syn.annotations.database_cross_reference[0], '')) AS ref "
+        "WITH " + FIRST_SYN_REF + " AS ref "
         "WHERE ref <> '' AND ref CONTAINS ':' "
         + ref_iri_person("ref") +
         "WITH ref WHERE ref_iri IS NULL "
@@ -291,6 +319,14 @@ for syn_type in synonym_types_for_pubs:
         "CASE WHEN prefix = 'doi' "
         "THEN 'doi_' + REPLACE(REPLACE(TRIM(raw_id), '.', '_'), '/', '_') "
         "ELSE raw_id END AS short_form_val "
+        "WITH DISTINCT prefix, raw_id, short_form_val, "
+        "CASE WHEN prefix = 'doi' THEN 'https://doi.org/' + raw_id "
+        "WHEN prefix = 'FlyBase' THEN 'http://flybase.org/reports/' + raw_id "
+        "ELSE 'http://' + prefix + '/' + raw_id END AS iri_val "
+        # a node that already has this iri (e.g. a KB pub keyed doi_..._s41586_026_10735_w while this would make
+        # doi_..._s41586-026-10735-w) is cited by iri in the expansion below; creating a second one fails the batch
+        "OPTIONAL MATCH (other:Entity {iri: iri_val}) "
+        "WITH prefix, raw_id, short_form_val, other WHERE other IS NULL "
         "RETURN prefix, raw_id, short_form_val\", "
         "\"MERGE (p:pub {short_form: short_form_val}) "
         "ON CREATE SET "
@@ -314,7 +350,7 @@ for syn_type in synonym_types_for_pubs:
         "UNWIND primary." + syn_type + " AS syn_str "
         "WITH apoc.convert.fromJsonMap(syn_str) AS syn "
         "WHERE EXISTS(syn.annotations.database_cross_reference) "
-        "WITH DISTINCT TRIM(COALESCE(syn.annotations.database_cross_reference[0], '')) AS ref "
+        "WITH DISTINCT " + FIRST_SYN_REF + " AS ref "
         "WHERE ref <> '' "
         + ref_iri_person("ref") +
         "WITH DISTINCT ref_iri WHERE ref_iri IS NOT NULL "
@@ -336,7 +372,7 @@ for syn_type in synonym_types_for_pubs:
         "SET p:Entity:Individual\", "
         "{batchSize: 500, iterateList: true})"
     )
-vc.nc.commit_list(statements=create_pub_statements)
+report_iterate(vc.nc.commit_list(statements=create_pub_statements), "pub nodes for synonym refs")
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
 start_monitor = timeit.default_timer()
@@ -365,7 +401,7 @@ for query in synonym_queries:
         "\"WITH primary, "
         "REDUCE(syns = [], syn IN primary." + query['synonym_type'] + " | syns + [apoc.convert.fromJsonMap(syn)]) AS syns "
         "UNWIND syns AS syn "
-        "WITH primary, syn, TRIM(COALESCE(syn.annotations.database_cross_reference[0], '')) AS ref "
+        "WITH primary, syn, " + FIRST_SYN_REF + " AS ref "
         + ref_iri_person("primary, syn, ref") +
         "WITH primary, syn, ref, ref_iri, "
         "CASE WHEN ref <> '' AND ref CONTAINS ':' THEN SPLIT(ref, ':')[0] ELSE NULL END AS prefix, "
@@ -376,10 +412,12 @@ for query in synonym_queries:
         "WHEN raw_id IS NOT NULL THEN raw_id "
         "ELSE 'Unattributed' END AS pub_short_form, "
         "CASE WHEN ref = '' OR NOT ref CONTAINS ':' THEN [syn.value] ELSE [ref] END AS unresolved_ref, "
-        "CASE WHEN ref = '' OR NOT ref CONTAINS ':' THEN true ELSE false END AS missing_ref "
+        "CASE WHEN ref = '' OR NOT ref CONTAINS ':' THEN true ELSE false END AS missing_ref, "
+        + PUB_IRI_EXPR + " AS pub_iri "
         "OPTIONAL MATCH (ip:pub {iri: ref_iri}) "
         "OPTIONAL MATCH (sp:pub {short_form: pub_short_form}) WHERE ref_iri IS NULL "
-        "WITH primary, syn, ref, coalesce(ip, sp) AS p, unresolved_ref, missing_ref "
+        "OPTIONAL MATCH (dp:pub {iri: pub_iri}) WHERE ref_iri IS NULL AND sp IS NULL "
+        "WITH primary, syn, ref, coalesce(ip, sp, dp) AS p, unresolved_ref, missing_ref "
         "WITH primary, syn, ref, p, p IS NULL AS unresolved, unresolved_ref, missing_ref "
         "MATCH (fallback:pub {short_form: 'Unattributed'}) "
         "WITH primary, syn, ref, COALESCE(p, fallback) AS resolved_pub, (unresolved OR missing_ref) AS unresolved, unresolved_ref "
@@ -398,7 +436,7 @@ for query in synonym_queries:
     )
 
 # Commit the statements
-vc.nc.commit_list(statements)
+report_iterate(vc.nc.commit_list(statements), "synonym has_reference edges")
 stop = timeit.default_timer()
 print('Run time: ' + str(stop - start))
 
