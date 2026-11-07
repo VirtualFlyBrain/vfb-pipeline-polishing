@@ -231,7 +231,7 @@ vc.nc.commit_list(statements=[
     "MATCH (i:Individual)-[:database_cross_reference]->(s:Site {short_form:'catmaid_l1em'}) SET i:L1EM",
     "MATCH (i:Individual)-[:database_cross_reference]->(s:Site {short_form:'catmaid_fanc'}) SET i:FANC",
     "MATCH (i:Individual)-[:database_cross_reference]->(s:Site {short_form:'neuprint_JRC_Hemibrain_1point1'}) SET i:FlyEM_HB",
-    "MATCH (i:Individual)-[:database_cross_reference]->(s:Site {short_form:'FlyCircuit'}) SET i:FlyCircuit"
+    "MATCH (i:Individual)-[:database_cross_reference]->(s:Site) WHERE s.short_form IN ['FlyCircuit', 'FlyCircuit1v2'] SET i:FlyCircuit"
 ])
 stop = timeit.default_timer()
 print('Run time: ', stop - start)
