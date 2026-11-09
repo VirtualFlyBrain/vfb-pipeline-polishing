@@ -1014,6 +1014,11 @@ monitor_apoc_jobs()
 stop_monitor = timeit.default_timer()
 print('Monitoring Run time: ', stop_monitor - start_monitor, 'seconds')
 
+# FlyBase self_xref: the KB loaders write 'FlyBase' but the FlyBase Site's short_form is 'FlyBaseSite', so term info
+# found no Site and lost its FlyBase link; FBco/FBtp/FBal classes never got a marker. See flybase_self_xref.py.
+import flybase_self_xref
+flybase_self_xref.normalise_flybase_self_xref(vc.nc)
+
 # Adding version
 version = 'PDBv' + time.strftime('%Y-%m-%d')
 vc.nc.commit_list(statements=["MERGE (v:API:Individual {short_form:'version'}) SET v.label='" + version + "' ;"])
