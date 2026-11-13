@@ -48,8 +48,9 @@ Env:
                            (default false: merge on top of the OWL-imported edges). vfb-data-release
                            sets it in polishing when the release loads only the new VFB_similarity_import
                            tables (nblast-legacy=false), so the 2022 NBLAST_*_import.owl edges go too
-  NBLAST_CHECKPOINT_IOPS   dbms.checkpoint.iops.limit while loading (default -1 = unlimited;
-                           empty = leave it alone). Restored afterwards.
+  NBLAST_CHECKPOINT_IOPS   dbms.checkpoint.iops.limit while loading (default 600, Neo4j's own default;
+                           -1 = unlimited, empty = leave it alone). Restored afterwards. Unlimited saturated
+                           a Longhorn iSCSI volume on 2026-11-13 and the node dropped its disks.
 """
 
 import glob
@@ -444,7 +445,7 @@ def load_all(endpoint, password):
     batch = int(os.environ.get('NBLAST_LOAD_BATCH', '20000'))
     workers = int(os.environ.get('NBLAST_LOAD_WORKERS', '4'))
     workdir = os.path.abspath(os.environ.get('NBLAST_DUCKDB_DIR', '.nblast_duckdb'))
-    iops = os.environ.get('NBLAST_CHECKPOINT_IOPS', '-1')
+    iops = os.environ.get('NBLAST_CHECKPOINT_IOPS', '600')
     replace = os.environ.get('NBLAST_REPLACE', '').lower() in ('1', 'true', 'yes')
     neo = Neo(endpoint, password)
     t0 = time.time()
@@ -488,8 +489,13 @@ def load_all(endpoint, password):
         verify(neo, db, before, totals)
     finally:
         if old_iops is not None:
-            neo.run("CALL dbms.setConfigValue('dbms.checkpoint.iops.limit', $v)", {'v': old_iops})
-            log(f"  dbms.checkpoint.iops.limit restored to {old_iops}")
+            # never let a failed restore hide the error that ended the load (2026-11-13: the PDB went away mid-load
+            # and the traceback showed only this call's "connection refused")
+            try:
+                neo.run("CALL dbms.setConfigValue('dbms.checkpoint.iops.limit', $v)", {'v': old_iops})
+                log(f"  dbms.checkpoint.iops.limit restored to {old_iops}")
+            except Exception as e:
+                log(f"  WARNING: could not restore dbms.checkpoint.iops.limit to {old_iops} ({str(e)[:200]})")
         db.close()
         shutil.rmtree(workdir, ignore_errors=True)
     log(f"Fast NBLAST load done in {time.time() - t0:.0f}s from {len(present)} files")
